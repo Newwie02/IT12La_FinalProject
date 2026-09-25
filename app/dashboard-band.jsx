@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, Image } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
+import { useAppAlert } from "../components/useAppAlert";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
@@ -43,16 +44,17 @@ function currentMonthYear() {
 
 export default function DashboardBand() {
   const router = useRouter();
-  const { bandName, fullName, instruments, genres } = useLocalSearchParams();
+  const { bandName, fullName, instruments, genres, bandPhotoUri } = useLocalSearchParams();
 
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
   const [stats] = useState({ bookings: 0, pending: 0, members: 1, rating: "0.0" });
+  const { showAlert, AlertModal } = useAppAlert();
 
   const backToMusicianView = () => {
     router.push({
       pathname: "/dashboard-musician",
-      params: { fullName, instruments, genres, bandName: resolvedBandName },
+      params: { fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri },
     });
   };
 
@@ -88,7 +90,11 @@ export default function DashboardBand() {
           <View style={styles.headerRow}>
             <Pressable onPress={backToMusicianView} style={styles.avatarWrap}>
               <View style={styles.avatarGreen}>
-                <Ionicons name="people" size={20} color="#16a34a" />
+                {bandPhotoUri ? (
+                  <Image source={{ uri: bandPhotoUri }} style={styles.avatarImage} />
+                ) : (
+                  <Ionicons name="people" size={20} color="#16a34a" />
+                )}
               </View>
             </Pressable>
             <View style={styles.headerText}>
@@ -98,7 +104,14 @@ export default function DashboardBand() {
             <Pressable
               style={styles.bellButton}
               hitSlop={8}
-              onPress={() => Alert.alert("Notifications", "No new notifications yet.")}
+              onPress={() =>
+                showAlert({
+                  icon: "notifications",
+                  tone: "info",
+                  title: "Notifications",
+                  message: "No new notifications yet.",
+                })
+              }
             >
               <Ionicons name="notifications" size={20} color="#7c3aed" />
             </Pressable>
@@ -216,8 +229,9 @@ export default function DashboardBand() {
       <BottomNav
         homeRoute="/dashboard-band"
         profileRoute="/profile-musician"
-        params={{ fullName, instruments, genres, bandName: resolvedBandName }}
+        params={{ fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri }}
       />
+      {AlertModal}
     </View>
   );
 }
@@ -250,7 +264,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(34,197,94,0.14)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  avatarImage: { width: "100%", height: "100%" },
   headerText: { flex: 1 },
   headerTitle: { color: "#111827", fontSize: 16, fontWeight: "700" },
   headerSubtitle: { color: "#6b7280", fontSize: 13, marginTop: 2 },

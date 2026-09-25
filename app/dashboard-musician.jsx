@@ -5,13 +5,13 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Alert,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
+import { useAppAlert } from "../components/useAppAlert";
 
 // GigMatch — Musician / Band dashboard (home)
 // Route: app/dashboard-musician.jsx  →  "/dashboard-musician"
@@ -45,7 +45,7 @@ const PLACEHOLDER_FELLOW_MUSICIANS = [
 
 export default function DashboardMusician() {
   const router = useRouter();
-  const { fullName, instruments, genres, bandName } = useLocalSearchParams();
+  const { fullName, instruments, genres, bandName, bandPhotoUri } = useLocalSearchParams();
 
   const musicianName = fullName?.trim() ? fullName.trim() : "Musician";
   const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
@@ -54,6 +54,7 @@ export default function DashboardMusician() {
 
   const [isOnline, setIsOnline] = useState(true);
   const [isAvailable, setIsAvailable] = useState(true);
+  const { showAlert, AlertModal } = useAppAlert();
 
   const headerLabel = `Musician — ${musicianName}`;
 
@@ -61,7 +62,7 @@ export default function DashboardMusician() {
     if (resolvedBandName) {
       router.push({
         pathname: "/dashboard-band",
-        params: { bandName: resolvedBandName, fullName, instruments, genres },
+        params: { bandName: resolvedBandName, fullName, instruments, genres, bandPhotoUri },
       });
     } else {
       router.push({
@@ -72,10 +73,12 @@ export default function DashboardMusician() {
   };
 
   const handleReminderPress = () => {
-    Alert.alert(
-      PLACEHOLDER_REMINDER.title,
-      `${PLACEHOLDER_REMINDER.date}\n${PLACEHOLDER_REMINDER.location}\n${PLACEHOLDER_REMINDER.price}\n\nBooking details screen goes here once real bookings exist.`
-    );
+    showAlert({
+      icon: "calendar",
+      tone: "info",
+      title: PLACEHOLDER_REMINDER.title,
+      message: `${PLACEHOLDER_REMINDER.date}\n${PLACEHOLDER_REMINDER.location} · ${PLACEHOLDER_REMINDER.price}\n\nFull booking details screen goes here once real bookings exist.`,
+    });
   };
 
   const handleBandPress = (band) => {
@@ -118,7 +121,14 @@ export default function DashboardMusician() {
             <Pressable
               style={styles.bellButton}
               hitSlop={8}
-              onPress={() => Alert.alert("Notifications", "No new notifications yet.")}
+              onPress={() =>
+                showAlert({
+                  icon: "notifications",
+                  tone: "info",
+                  title: "Notifications",
+                  message: "No new notifications yet.",
+                })
+              }
             >
               <Ionicons name="notifications" size={20} color="#7c3aed" />
             </Pressable>
@@ -287,8 +297,9 @@ export default function DashboardMusician() {
       <BottomNav
         homeRoute="/dashboard-musician"
         profileRoute="/profile-musician"
-        params={{ fullName, instruments, genres, bandName }}
+        params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
       />
+      {AlertModal}
     </View>
   );
 }

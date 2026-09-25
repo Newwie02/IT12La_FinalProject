@@ -7,7 +7,7 @@ import BottomNav from "../components/BottomNav";
 // Route: app/messages.jsx  →  "/messages"
 
 export default function Messages() {
-  const { fullName, instruments, genres, bandName } = useLocalSearchParams();
+  const { fullName, instruments, genres, bandName, bandPhotoUri } = useLocalSearchParams();
 
   return (
     <View style={styles.page}>
@@ -25,7 +25,7 @@ export default function Messages() {
       <BottomNav
         homeRoute={bandName ? "/dashboard-band" : "/dashboard-musician"}
         profileRoute="/profile-musician"
-        params={{ fullName, instruments, genres, bandName }}
+        params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
       />
     </View>
   );

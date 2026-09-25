@@ -8,7 +8,7 @@ import BottomNav from "../components/BottomNav";
 
 export default function ProfileMusician() {
   const router = useRouter();
-  const { fullName, instruments, genres, bandName } = useLocalSearchParams();
+  const { fullName, instruments, genres, bandName, bandPhotoUri } = useLocalSearchParams();
   const name = fullName?.trim() ? fullName.trim() : "Musician";
 
   return (
@@ -46,7 +46,7 @@ export default function ProfileMusician() {
       <BottomNav
         homeRoute={bandName ? "/dashboard-band" : "/dashboard-musician"}
         profileRoute="/profile-musician"
-        params={{ fullName, instruments, genres, bandName }}
+        params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
       />
     </View>
   );

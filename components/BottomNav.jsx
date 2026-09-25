@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 const NAV_ITEMS = [
   { key: "home", label: "Home", icon: "home" },
   { key: "discover", label: "Discover", icon: "compass" },
+  { key: "gigs", label: "Gigs", icon: "megaphone" },
   { key: "messages", label: "Messages", icon: "chatbubble-ellipses" },
   { key: "profile", label: "Profile", icon: "person" },
 ];
@@ -27,6 +28,7 @@ export default function BottomNav({
   const routes = {
     home: homeRoute,
     discover: "/discover",
+    gigs: "/gig-posting",
     messages: "/messages",
     profile: profileRoute,
   };
