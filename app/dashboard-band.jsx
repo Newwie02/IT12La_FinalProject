@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
+import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
 
 // GigMatch — Band dashboard (home, band-leader view)
@@ -49,13 +50,19 @@ export default function DashboardBand() {
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
   const [stats] = useState({ bookings: 0, pending: 0, members: 1, rating: "0.0" });
+  const [isSwitching, setIsSwitching] = useState(false);
   const { showAlert, AlertModal } = useAppAlert();
 
   const backToMusicianView = () => {
-    router.push({
-      pathname: "/dashboard-musician",
-      params: { fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri },
-    });
+    if (isSwitching) return;
+    setIsSwitching(true);
+    setTimeout(() => {
+      router.push({
+        pathname: "/dashboard-musician",
+        params: { fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri },
+      });
+      setIsSwitching(false);
+    }, 700);
   };
 
   const handleGigPress = (gig) => {
@@ -232,6 +239,7 @@ export default function DashboardBand() {
         params={{ fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri }}
       />
       {AlertModal}
+      <SwitchLoadingOverlay visible={isSwitching} label="Switching to Musician dashboard..." />
     </View>
   );
 }
@@ -365,4 +373,4 @@ const styles = StyleSheet.create({
   },
   suggestedName: { color: "#111827", fontSize: 12, fontWeight: "700", marginBottom: 6 },
   portfolioTagRow: { flexDirection: "row", gap: 4, flexWrap: "wrap", justifyContent: "center" },
-});
+}); 

@@ -21,6 +21,7 @@ export default function BottomNav({
   homeRoute = "/dashboard-musician",
   profileRoute = "/profile-musician",
   params = {},
+  showGigs = true,
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -33,9 +34,11 @@ export default function BottomNav({
     profile: profileRoute,
   };
 
+  const items = showGigs ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== "gigs");
+
   return (
     <BlurView intensity={60} tint="light" style={styles.bottomNav}>
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const isActive = pathname === routes[item.key];
         return (
           <Pressable

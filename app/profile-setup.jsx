@@ -241,24 +241,38 @@ export default function ProfileSetup() {
             </View>
 
             {/* Birthday — date picker */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Birthday</Text>
-              <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
-                <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {formatDate(birthday) ?? "Select birthday"}
-                </Text>
-                <Text style={styles.chevron}>📅</Text>
-              </Pressable>
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={birthday ?? new Date(2000, 0, 1)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  maximumDate={new Date()}
-                  onChange={onChangeDate}
-                />
-              ) : null}
-            </View>
+<View style={styles.field}>
+  <Text style={styles.label}>Birthday</Text>
+  {Platform.OS === "web" ? (
+    <input
+      type="date"
+      max={new Date().toISOString().split("T")[0]}
+      value={birthday ? birthday.toISOString().split("T")[0] : ""}
+      onChange={(e) => {
+        if (e.target.value) setBirthday(new Date(e.target.value));
+      }}
+      style={webDateInputStyle}
+    />
+  ) : (
+    <>
+      <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
+        <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
+          {formatDate(birthday) ?? "Select birthday"}
+        </Text>
+        <Text style={styles.chevron}>📅</Text>
+      </Pressable>
+      {showDatePicker ? (
+        <DateTimePicker
+          value={birthday ?? new Date(2000, 0, 1)}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          maximumDate={new Date()}
+          onChange={onChangeDate}
+        />
+      ) : null}
+    </>
+  )}
+</View>
 
             {/* Experience level — dropdown */}
             <View style={styles.field}>
@@ -471,6 +485,18 @@ function SelectModal({
 }
 
 const CARD_MAX_WIDTH = 384;
+
+const webDateInputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.15)",
+  backgroundColor: "rgba(255,255,255,0.05)",
+  borderRadius: 12,
+  padding: 14,
+  fontSize: 14,
+  color: "#fff",
+};
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#0c0a18" },

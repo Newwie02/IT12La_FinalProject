@@ -7,8 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function GigDetail() {
   const router = useRouter();
-  const { posterName, tags, location, price, description } = useLocalSearchParams();
-
+  const { posterName, tags, location, price, description, fullName, instruments, genres, bandName, bandPhotoUri } = useLocalSearchParams();
   return (
     <View style={styles.page}>
       <View style={styles.blob} />
@@ -32,9 +31,12 @@ export default function GigDetail() {
 
         <Pressable
           style={styles.applyButton}
-          onPress={() =>
-            router.push({ pathname: "/messages", params: { with: posterName ?? "Client" } })
-          }
+         onPress={() =>
+  router.push({
+    pathname: "/messages",
+    params: { with: posterName ?? "Client", fullName, instruments, genres, bandName, bandPhotoUri },
+  })
+}
         >
           <Text style={styles.applyButtonText}>Message about this gig</Text>
         </Pressable>

@@ -7,7 +7,16 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function MusicianProfile() {
   const router = useRouter();
-  const { name, tags } = useLocalSearchParams();
+  const {
+    userId,
+    name,
+    tags,
+    fullName,
+    instruments,
+    genres,
+    bandName,
+    bandPhotoUri,
+  } = useLocalSearchParams();
 
   return (
     <View style={styles.page}>
@@ -32,12 +41,26 @@ export default function MusicianProfile() {
         </View>
 
         <Pressable
-          style={styles.contactButton}
+          style={[styles.contactButton, !userId && styles.contactButtonDisabled]}
+          disabled={!userId}
           onPress={() =>
-            router.push({ pathname: "/messages", params: { with: name ?? "Musician" } })
+            router.push({
+              pathname: "/messages",
+              params: {
+                withId: userId,
+                with: name ?? "Musician",
+                fullName,
+                instruments,
+                genres,
+                bandName,
+                bandPhotoUri,
+              },
+            })
           }
         >
-          <Text style={styles.contactButtonText}>Message this musician</Text>
+          <Text style={styles.contactButtonText}>
+            {userId ? "Message this musician" : "Can't message: missing user id"}
+          </Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -95,5 +118,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
   },
+  contactButtonDisabled: { opacity: 0.5 },
   contactButtonText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });

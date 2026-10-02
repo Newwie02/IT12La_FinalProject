@@ -1,29 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   ScrollView,
+  Image,
+  Alert,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import BottomNav from "../components/BottomNav";
-import { useAppAlert } from "../components/useAppAlert";
+import { getMusicians } from "../api";
 
 // GigMatch — Musician / Band dashboard (home)
 // Route: app/dashboard-musician.jsx  →  "/dashboard-musician"
-// Light glassmorphism shell. Fully interactive with local state (taps,
-// toggles, navigation all work) — there's no backend yet, so nothing here
-// persists past a reload. Swap PLACEHOLDER_* constants for real data once
-// an API is wired up.
-//
-// Identity: real name/instruments/genres come from route params, forwarded
-// all the way from sign-up → role-select → profile-setup. Tapping the
-// avatar opens the real band dashboard (dashboard-band.jsx) if a band
-// exists, or the create-band flow if it doesn't.
+
+const PLACEHOLDER_USER = {
+  bandName: "The Band",
+};
 
 const PLACEHOLDER_REMINDER = {
   date: "Sat, Oct 18 · 6:00 PM",
@@ -33,71 +29,82 @@ const PLACEHOLDER_REMINDER = {
   price: "₱17,000",
 };
 
+const PLACEHOLDER_STATUS = [
+  { key: "active", label: "Active status", value: "Online" },
+  { key: "band", label: "Band Status", value: "Banded" },
+  { key: "availability", label: "Availability", value: "Available" },
+];
+
 const PLACEHOLDER_RECOMMENDED = [
   { id: "1", name: "Ctrl+S", tags: "Pop, R&B Band" },
   { id: "2", name: "IV of Speeds", tags: "Rock, Pop, R&B Band" },
 ];
 
-const PLACEHOLDER_FELLOW_MUSICIANS = [
-  { id: "1", name: "Angel Daro", role: "Drummer · Tagum", rating: "5.0" },
-  { id: "2", name: "Ivy Grace Mananday", role: "Electric Guitar · Tagum", rating: "2.5" },
+const NAV_ITEMS = [
+  { key: "home", label: "Home", icon: "home", route: "/dashboard-musician" },
+  { key: "discover", label: "Discover", icon: "compass", route: "/discover" },
+  { key: "messages", label: "Messages", icon: "chatbubble-ellipses", route: "/messages" },
+  { key: "profile", label: "Profile", icon: "person", route: "/profile-musician" },
 ];
 
 export default function DashboardMusician() {
   const router = useRouter();
-  const { fullName, instruments, genres, bandName, bandPhotoUri } = useLocalSearchParams();
+  const { fullName, instruments, genres } = useLocalSearchParams();
+  const [identity, setIdentity] = useState("musician");
+  const [activeTab, setActiveTab] = useState("home");
+
+  const [musicians, setMusicians] = useState([]);
+  const [loadingMusicians, setLoadingMusicians] = useState(true);
 
   const musicianName = fullName?.trim() ? fullName.trim() : "Musician";
   const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
-  const resolvedBandName = bandName?.trim() ? bandName.trim() : null;
 
-  const [isOnline, setIsOnline] = useState(true);
-  const [isAvailable, setIsAvailable] = useState(true);
-  const { showAlert, AlertModal } = useAppAlert();
+  const isBand = identity === "band";
+  const displayName = isBand ? PLACEHOLDER_USER.bandName : musicianName;
+  const headerLabel = isBand ? `Band — ${PLACEHOLDER_USER.bandName}` : `Musician — ${musicianName}`;
 
-  const headerLabel = `Musician — ${musicianName}`;
-
-  const goToBandOrCreate = () => {
-    if (resolvedBandName) {
-      router.push({
-        pathname: "/dashboard-band",
-        params: { bandName: resolvedBandName, fullName, instruments, genres, bandPhotoUri },
-      });
-    } else {
-      router.push({
-        pathname: "/create-band",
-        params: { fullName, instruments, genres },
-      });
+  const loadMusicians = useCallback(async () => {
+    try {
+      const data = await getMusicians();
+      setMusicians(data);
+    } catch (err) {
+      setMusicians([]);
     }
+  }, []);
+
+  useEffect(() => {
+    setLoadingMusicians(true);
+    loadMusicians().finally(() => setLoadingMusicians(false));
+  }, [loadMusicians]);
+
+  const toggleIdentity = () => {
+    setIdentity((prev) => (prev === "musician" ? "band" : "musician"));
   };
 
-  const handleReminderPress = () => {
-    showAlert({
-      icon: "calendar",
-      tone: "info",
-      title: PLACEHOLDER_REMINDER.title,
-      message: `${PLACEHOLDER_REMINDER.date}\n${PLACEHOLDER_REMINDER.location} · ${PLACEHOLDER_REMINDER.price}\n\nFull booking details screen goes here once real bookings exist.`,
-    });
+  const handleCreateBand = () => {
+    Alert.alert(
+      "Create a band",
+      "This is a placeholder — wire this up to your real create-band flow / route."
+    );
   };
 
-  const handleBandPress = (band) => {
-    router.push({
-      pathname: "/band-profile",
-      params: { name: band.name, tags: band.tags },
-    });
-  };
-
-  const handleMusicianPress = (person) => {
+  const openMusicianProfile = (person) => {
     router.push({
       pathname: "/musician-profile",
-      params: { name: person.name, tags: `${person.role} · ${person.rating}★` },
+      params: {
+        userId: person.id,
+        name: person.name,
+        tags: person.role ?? "",
+        fullName,
+        instruments,
+        genres,
+      },
     });
   };
 
   return (
     <View style={styles.page}>
-      {/* Soft pastel blobs for the glass surfaces to refract */}
       <View style={[styles.blob, styles.blobViolet]} />
       <View style={[styles.blob, styles.blobPink]} />
       <View style={[styles.blob, styles.blobBlue]} />
@@ -106,65 +113,51 @@ export default function DashboardMusician() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <BlurView intensity={50} tint="light" style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <Pressable onPress={goToBandOrCreate} style={styles.avatarWrap}>
+            <Pressable onPress={toggleIdentity} style={styles.avatarWrap}>
               <View style={styles.avatar}>
-                <Ionicons name="person" size={20} color="#7c3aed" />
+                <Ionicons
+                  name={isBand ? "people" : "person"}
+                  size={20}
+                  color="#7c3aed"
+                />
               </View>
             </Pressable>
             <View style={styles.headerText}>
               <Text style={styles.headerTitle}>{headerLabel}</Text>
-              <Text style={styles.headerSubtitle}>Good day, {musicianName.split(" ")[0]}</Text>
+              <Text style={styles.headerSubtitle}>Good day, {displayName.split(" ")[0]}</Text>
             </View>
-            <Pressable
-              style={styles.bellButton}
-              hitSlop={8}
-              onPress={() =>
-                showAlert({
-                  icon: "notifications",
-                  tone: "info",
-                  title: "Notifications",
-                  message: "No new notifications yet.",
-                })
-              }
-            >
+            <Pressable style={styles.bellButton} hitSlop={8}>
               <Ionicons name="notifications" size={20} color="#7c3aed" />
             </Pressable>
           </View>
           <Text style={styles.identityHint}>
-            {resolvedBandName
-              ? "Tap your avatar to open your band dashboard"
-              : "Tap your avatar to create a band"}
+            Tap your avatar to preview band mode (placeholder)
           </Text>
         </BlurView>
 
-        {/* Reminder */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Reminder</Text>
-          <Pressable onPress={handleReminderPress}>
-            <LinearGradient
-              colors={["#8b5cf6", "#d946ef"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.reminderCard}
-            >
-              <View style={styles.reminderTopRow}>
-                <Text style={styles.reminderDate}>{PLACEHOLDER_REMINDER.date}</Text>
-                <View style={styles.confirmedBadge}>
-                  <Text style={styles.confirmedBadgeText}>{PLACEHOLDER_REMINDER.status}</Text>
-                </View>
+          <LinearGradient
+            colors={["#8b5cf6", "#d946ef"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.reminderCard}
+          >
+            <View style={styles.reminderTopRow}>
+              <Text style={styles.reminderDate}>{PLACEHOLDER_REMINDER.date}</Text>
+              <View style={styles.confirmedBadge}>
+                <Text style={styles.confirmedBadgeText}>{PLACEHOLDER_REMINDER.status}</Text>
               </View>
-              <Text style={styles.reminderTitle}>{PLACEHOLDER_REMINDER.title}</Text>
-              <Text style={styles.reminderMeta}>
-                {PLACEHOLDER_REMINDER.location} · {PLACEHOLDER_REMINDER.price}
-              </Text>
-            </LinearGradient>
-          </Pressable>
+            </View>
+            <Text style={styles.reminderTitle}>{PLACEHOLDER_REMINDER.title}</Text>
+            <Text style={styles.reminderMeta}>
+              {PLACEHOLDER_REMINDER.location} · {PLACEHOLDER_REMINDER.price}
+            </Text>
+          </LinearGradient>
         </View>
 
-        {/* Tags */}
         <View style={styles.tagRow}>
           {instrumentTags.length > 0 || genreTags.length > 0 ? (
             <>
@@ -194,59 +187,26 @@ export default function DashboardMusician() {
           )}
         </View>
 
-        {/* Status cards — real, tappable local state */}
         <View style={styles.statusRow}>
-          <Pressable
-            style={styles.statusCardWrap}
-            onPress={() => setIsOnline((v) => !v)}
-          >
-            <BlurView intensity={40} tint="light" style={styles.statusCard}>
-              <View style={[styles.statusDot, !isOnline && styles.statusDotOff]} />
-              <Text style={styles.statusValue}>{isOnline ? "Online" : "Offline"}</Text>
-              <Text style={styles.statusLabel}>Active status</Text>
+          {PLACEHOLDER_STATUS.map((item) => (
+            <BlurView key={item.key} intensity={40} tint="light" style={styles.statusCard}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusValue}>{item.value}</Text>
+              <Text style={styles.statusLabel}>{item.label}</Text>
             </BlurView>
-          </Pressable>
-
-          <Pressable style={styles.statusCardWrap} onPress={goToBandOrCreate}>
-            <BlurView intensity={40} tint="light" style={styles.statusCard}>
-              <View style={[styles.statusDot, !resolvedBandName && styles.statusDotOff]} />
-              <Text style={styles.statusValue}>{resolvedBandName ? "Banded" : "Solo"}</Text>
-              <Text style={styles.statusLabel}>Band Status</Text>
-            </BlurView>
-          </Pressable>
-
-          <Pressable
-            style={styles.statusCardWrap}
-            onPress={() => setIsAvailable((v) => !v)}
-          >
-            <BlurView intensity={40} tint="light" style={styles.statusCard}>
-              <View style={[styles.statusDot, !isAvailable && styles.statusDotOff]} />
-              <Text style={styles.statusValue}>{isAvailable ? "Available" : "Busy"}</Text>
-              <Text style={styles.statusLabel}>Availability</Text>
-            </BlurView>
-          </Pressable>
+          ))}
         </View>
 
-        {/* Create band CTA — only relevant while no band exists yet */}
-        {!resolvedBandName ? (
-          <Pressable
-            onPress={() =>
-              router.push({
-                pathname: "/create-band",
-                params: { fullName, instruments, genres },
-              })
-            }
-            style={styles.createBandButton}
-          >
+        {!isBand ? (
+          <Pressable onPress={handleCreateBand} style={styles.createBandButton}>
             <Ionicons name="add-circle" size={18} color="#7c3aed" />
             <Text style={styles.createBandText}>Create a band</Text>
           </Pressable>
         ) : null}
 
-        {/* Recommended for you */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recommended for you</Text>
-          <Pressable onPress={() => router.push("/discover")}>
+          <Pressable>
             <Text style={styles.seeAll}>See all</Text>
           </Pressable>
         </View>
@@ -256,50 +216,74 @@ export default function DashboardMusician() {
           contentContainerStyle={styles.recommendedRow}
         >
           {PLACEHOLDER_RECOMMENDED.map((band) => (
-            <Pressable key={band.id} onPress={() => handleBandPress(band)}>
-              <BlurView intensity={40} tint="light" style={styles.recommendedCard}>
-                <View style={styles.recommendedAvatar} />
-                <Text style={styles.recommendedName}>{band.name}</Text>
-                <Text style={styles.recommendedTags}>{band.tags}</Text>
-              </BlurView>
-            </Pressable>
+            <BlurView key={band.id} intensity={40} tint="light" style={styles.recommendedCard}>
+              <View style={styles.recommendedAvatar} />
+              <Text style={styles.recommendedName}>{band.name}</Text>
+              <Text style={styles.recommendedTags}>{band.tags}</Text>
+            </BlurView>
           ))}
         </ScrollView>
 
-        {/* Fellow musician */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Fellow musician</Text>
-          <Pressable onPress={() => router.push("/discover")}>
+          <Pressable>
             <Text style={styles.seeAll}>See all</Text>
           </Pressable>
         </View>
-        {PLACEHOLDER_FELLOW_MUSICIANS.map((person) => (
-          <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
-            <View style={styles.personAvatar} />
-            <View style={styles.personText}>
-              <Text style={styles.personName}>{person.name}</Text>
-              <Text style={styles.personMeta}>
-                {person.role} · {person.rating}★
-              </Text>
-            </View>
-            <Pressable
-              style={styles.viewProfileButton}
-              onPress={() => handleMusicianPress(person)}
-            >
-              <Text style={styles.viewProfileText}>View Profile</Text>
-            </Pressable>
-          </BlurView>
-        ))}
+        {loadingMusicians ? (
+          <Text style={styles.emptyText}>Loading musicians...</Text>
+        ) : musicians.length === 0 ? (
+          <Text style={styles.emptyText}>No other musicians yet.</Text>
+        ) : (
+          musicians.map((person) => (
+            <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
+              <View style={styles.personAvatar} />
+              <View style={styles.personText}>
+                <Text style={styles.personName}>{person.name}</Text>
+                <Text style={styles.personMeta}>{person.role}</Text>
+              </View>
+              <Pressable
+                style={styles.viewProfileButton}
+                onPress={() => openMusicianProfile(person)}
+              >
+                <Text style={styles.viewProfileText}>View Profile</Text>
+              </Pressable>
+            </BlurView>
+          ))
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <BottomNav
-        homeRoute="/dashboard-musician"
-        profileRoute="/profile-musician"
-        params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
-      />
-      {AlertModal}
+      <BlurView intensity={60} tint="light" style={styles.bottomNav}>
+        {NAV_ITEMS.map((item) => {
+          const isActive = activeTab === item.key;
+          return (
+            <Pressable
+              key={item.key}
+              onPress={() => {
+                setActiveTab(item.key);
+                if (item.key !== "home") {
+                  router.push({
+                    pathname: item.route,
+                    params: { fullName, instruments, genres },
+                  });
+                }
+              }}
+              style={styles.navItem}
+            >
+              <Ionicons
+                name={isActive ? item.icon : `${item.icon}-outline`}
+                size={22}
+                color={isActive ? "#7c3aed" : "#9ca3af"}
+              />
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </BlurView>
     </View>
   );
 }
@@ -384,8 +368,8 @@ const styles = StyleSheet.create({
   tagChipGreenText: { color: "#16a34a", fontSize: 12, fontWeight: "600" },
 
   statusRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
-  statusCardWrap: { flex: 1 },
   statusCard: {
+    flex: 1,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.05)",
@@ -400,7 +384,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#22c55e",
     marginBottom: 8,
   },
-  statusDotOff: { backgroundColor: "#d1d5db" },
   statusValue: { color: "#111827", fontSize: 13, fontWeight: "700" },
   statusLabel: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
 
@@ -445,6 +428,8 @@ const styles = StyleSheet.create({
   recommendedName: { color: "#111827", fontSize: 13, fontWeight: "700" },
   recommendedTags: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
 
+  emptyText: { color: "#9ca3af", fontSize: 13, marginBottom: 16 },
+
   personRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -472,4 +457,20 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   viewProfileText: { color: PURPLE, fontSize: 11, fontWeight: "700" },
+
+  bottomNav: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    overflow: "hidden",
+    flexDirection: "row",
+    paddingVertical: 12,
+  },
+  navItem: { flex: 1, alignItems: "center", gap: 3 },
+  navLabel: { color: "#9ca3af", fontSize: 10, fontWeight: "600" },
+  navLabelActive: { color: PURPLE },
 });

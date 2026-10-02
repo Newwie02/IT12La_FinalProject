@@ -13,6 +13,7 @@ import {
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { signup, saveToken } from "../api";
 
 // GigMatch — sign-up screen (Expo / React Native)
 // Route: app/sign-up.jsx  →  "/sign-up"
@@ -71,15 +72,26 @@ export default function GigMatchSignUp() {
     confirmPassword.length > 0 &&
     passwordsMatch;
 
-  const handleSubmit = () => {
+ const handleSubmit = async () => {
     if (!validate()) return;
     setSubmitting(true);
-    // Wire this up to your real signup endpoint / auth provider.
-    // Simulated here so the flow is fully clickable end-to-end.
-    setTimeout(() => {
-      setSubmitting(false);
+
+    try {
+      const { token } = await signup({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        role: "musician",
+      });
+
+      await saveToken(token);
+
       router.push({ pathname: "/role-select", params: { fullName: name.trim() } });
-    }, 700);
+    } catch (err) {
+      setErrors((e) => ({ ...e, email: err.message || "Signup failed. Try again." }));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

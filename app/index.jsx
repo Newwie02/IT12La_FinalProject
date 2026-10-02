@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import Svg, { Path } from "react-native-svg";
+import { login, saveToken } from "../api";
 
 // GigMatch — glassmorphism sign-in screen (Expo / React Native)
 // Requires: expo install expo-linear-gradient expo-blur react-native-svg
@@ -25,6 +26,28 @@ export default function GigMatchLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleLogin = async () => {
+  if (!email.trim() || !password) {
+    setError("Enter your email and password.");
+    return;
+  }
+  setError(null);
+  setSubmitting(true);
+  try {
+    const { token, user } = await login({ email: email.trim(), password });
+    await saveToken(token);
+
+    const destination = user.role === "client" ? "/dashboard-client" : "/dashboard-musician";
+    router.replace({ pathname: destination, params: { fullName: user.name, role: user.role } });
+  } catch (err) {
+    setError(err.message || "Login failed. Check your email and password.");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   return (
     <View style={styles.page}>
@@ -97,16 +120,17 @@ export default function GigMatchLogin() {
                 </View>
               </View>
 
-              <Pressable onPress={() => {}} style={({ pressed }) => [pressed && styles.pressed]}>
+              <Pressable onPress={handleLogin} disabled={submitting} style={({ pressed }) => [pressed && styles.pressed]}>
                 <LinearGradient
                   colors={["#8b5cf6", "#d946ef"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.submit}
                 >
-                  <Text style={styles.submitText}>Continue</Text>
-                </LinearGradient>
-              </Pressable>
+              <Text style={styles.submitText}>{submitting ? "Logging in..." : "Continue"}</Text>
+              </LinearGradient>
+            </Pressable>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               {/* Divider */}
               <View style={styles.divider}>
@@ -291,10 +315,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
   },
-  submitText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
+  errorText: { 
+    color: "#fca5a5",
+    fontSize: 12, 
+    marginTop: 8, 
+    textAlign: "center" ,
   },
   pressed: {
     opacity: 0.85,
