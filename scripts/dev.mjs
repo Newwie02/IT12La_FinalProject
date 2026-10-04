@@ -85,7 +85,7 @@ if (!existsSync(expoBin)) {
   process.exit(1);
 }
 
-const apiPort = process.env.API_PORT || process.env.PORT || "5000";
+const apiPort = process.env.API_PORT || process.env.PORT || "8080";
 const metroPort = process.env.EXPO_PORT || "8081";
 
 const busy = [];

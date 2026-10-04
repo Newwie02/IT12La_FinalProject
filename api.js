@@ -7,8 +7,9 @@ import Constants from "expo-constants";
 //   2. Metro's host for this session   (your machine's CURRENT LAN IP on a
 //                                       real device running Expo Go)
 //   3. localhost                       (web / simulator)
-// The API port defaults to 5000 and can be changed with EXPO_PUBLIC_API_PORT.
-const API_PORT = process.env.EXPO_PUBLIC_API_PORT || "5000";
+// The API port defaults to 8080 and can be changed with EXPO_PUBLIC_API_PORT.
+// 8080 (not 5000) because that's the port this machine's firewall already lets through.
+const API_PORT = process.env.EXPO_PUBLIC_API_PORT || "8080";
 
 function isLoopback(host) {
   return (
@@ -44,7 +45,7 @@ function resolveBaseUrl() {
 
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     // Tunnel/domain host (ngrok etc.) — only Metro's port is tunneled,
-    // so :5000 won't be reachable through it.
+    // so the API's port won't be reachable through it.
     console.warn(
       `[api] Metro host "${host}" is not a LAN IP. Start Expo on your LAN ` +
         `network, or set EXPO_PUBLIC_API_URL=http://<machine-ip>:${API_PORT}/api`

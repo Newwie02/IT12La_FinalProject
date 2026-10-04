@@ -3,7 +3,7 @@
 // defaults match a stock XAMPP install on this machine.
 
 const config = {
-  port: Number(process.env.API_PORT || process.env.PORT || 5000),
+  port: Number(process.env.API_PORT || process.env.PORT || 8080),
   db: {
     host: process.env.DB_HOST || "127.0.0.1",
     port: Number(process.env.DB_PORT || 3306),
