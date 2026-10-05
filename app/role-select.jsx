@@ -9,6 +9,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { updateMyRole } from "../api";
 
 // GigMatch — onboarding step 2: "How will you use GigMatch?"
 // Flow: sign-up ("/sign-up", step 1) → this screen (step 2) → step 3 (final),
@@ -51,6 +52,12 @@ export default function OnboardingRoleStep() {
 
   const handleContinue = () => {
     if (!canContinue) return;
+    // Persist the choice on the server (fire-and-forget so onboarding never
+    // stalls on the network) — otherwise login always lands back on the
+    // default dashboard, because signup was created as "musician".
+    updateMyRole(selected).catch((err) => {
+      if (__DEV__) console.warn("[api] could not save role:", err.message);
+    });
     const destination =
       selected === "organizer" ? ORGANIZER_ROUTE : MUSICIAN_BAND_ROUTE;
     router.push({ pathname: destination, params: { role: selected, fullName } });

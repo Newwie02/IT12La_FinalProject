@@ -5,6 +5,8 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@react-native-community/datetimepicker": "9.1.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
     "expo": "~57.0.24",
     "expo-blur": "~57.0.3",
     "expo-constants": "~57.0.19",
@@ -14,6 +16,9 @@
     "expo-router": "~57.0.22",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -26,7 +31,11 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "dev": "node scripts/dev.mjs",
+    "server": "node --env-file-if-exists=.env server/index.js",
+    "server:watch": "node --watch --env-file-if-exists=.env server/index.js",
+    "db:setup": "node --env-file-if-exists=.env server/db/setup.js"
   },
   "private": true,
   "description": "",
