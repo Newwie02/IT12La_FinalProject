@@ -61,10 +61,7 @@ if (__DEV__) {
   console.log(`[api] Using ${BASE_URL}`);
 }
 
-<<<<<<< HEAD
-const BASE_URL = "http://192.168.100.15:5000/api";
-=======
->>>>>>> 5ca3bac166a17c9463faa8ab77275958a91c4fe5
+const BASE_URL = "http://192.168.100.15:5000/api"
 
 // SecureStore doesn't work on web, so fall back to localStorage there.
 export async function saveToken(token) {
