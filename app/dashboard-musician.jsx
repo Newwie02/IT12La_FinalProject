@@ -8,18 +8,18 @@ import {
   Image,
   Alert,
 } from "react-native";
+import { getMusicians, getMyBand } from "../api";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import { getMusicians } from "../api";
+import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 
-// GigMatch — Musician / Band dashboard (home)
+// GigMatch — Musician dashboard (home)
 // Route: app/dashboard-musician.jsx  →  "/dashboard-musician"
-
-const PLACEHOLDER_USER = {
-  bandName: "The Band",
-};
+// This screen always represents the MUSICIAN view. If the user has a real
+// band (bandName param present), tapping the avatar navigates to the real
+// dashboard-band.jsx screen instead of faking a local "band preview".
 
 const PLACEHOLDER_REMINDER = {
   date: "Sat, Oct 18 · 6:00 PM",
@@ -28,12 +28,6 @@ const PLACEHOLDER_REMINDER = {
   location: "Visayan Village, Tagum",
   price: "₱17,000",
 };
-
-const PLACEHOLDER_STATUS = [
-  { key: "active", label: "Active status", value: "Online" },
-  { key: "band", label: "Band Status", value: "Banded" },
-  { key: "availability", label: "Availability", value: "Available" },
-];
 
 const PLACEHOLDER_RECOMMENDED = [
   { id: "1", name: "Ctrl+S", tags: "Pop, R&B Band" },
@@ -49,9 +43,17 @@ const NAV_ITEMS = [
 
 export default function DashboardMusician() {
   const router = useRouter();
-  const { fullName, instruments, genres } = useLocalSearchParams();
-  const [identity, setIdentity] = useState("musician");
+  const params = useLocalSearchParams();
+const { fullName, instruments, genres } = params;
+const [band, setBand] = useState(null);
+useEffect(() => {
+  getMyBand().then(setBand).catch((e) => console.log("getMyBand error:", e.message));
+}, []);
+
+const bandName = band?.name ?? params.bandName;
+const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
   const [activeTab, setActiveTab] = useState("home");
+  const [isSwitching, setIsSwitching] = useState(false);
 
   const [musicians, setMusicians] = useState([]);
   const [loadingMusicians, setLoadingMusicians] = useState(true);
@@ -60,9 +62,13 @@ export default function DashboardMusician() {
   const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
-  const isBand = identity === "band";
-  const displayName = isBand ? PLACEHOLDER_USER.bandName : musicianName;
-  const headerLabel = isBand ? `Band — ${PLACEHOLDER_USER.bandName}` : `Musician — ${musicianName}`;
+  const headerLabel = `Musician — ${musicianName}`;
+
+  const statusItems = [
+    { key: "active", label: "Active status", value: "Online" },
+    { key: "band", label: "Band Status", value: bandName ? "Banded" : "Solo" },
+    { key: "availability", label: "Availability", value: "Available" },
+  ];
 
   const loadMusicians = useCallback(async () => {
     try {
@@ -78,15 +84,27 @@ export default function DashboardMusician() {
     loadMusicians().finally(() => setLoadingMusicians(false));
   }, [loadMusicians]);
 
-  const toggleIdentity = () => {
-    setIdentity((prev) => (prev === "musician" ? "band" : "musician"));
+ const goToBandDashboard = () => {
+    if (!bandName) {
+      Alert.alert("No band yet", "Create or join a band first before switching to band view.");
+      return;
+    }
+    if (isSwitching) return;
+    setIsSwitching(true);
+    setTimeout(() => {
+      router.push({
+        pathname: "/dashboard-band",
+        params: { fullName, instruments, genres, bandName, bandPhotoUri },
+      });
+      setIsSwitching(false);
+    }, 700);
   };
 
   const handleCreateBand = () => {
-    Alert.alert(
-      "Create a band",
-      "This is a placeholder — wire this up to your real create-band flow / route."
-    );
+    router.push({
+      pathname: "/create-band",
+      params: { fullName, instruments, genres },
+    });
   };
 
   const openMusicianProfile = (person) => {
@@ -99,6 +117,8 @@ export default function DashboardMusician() {
         fullName,
         instruments,
         genres,
+        bandName,
+        bandPhotoUri,
       },
     });
   };
@@ -115,25 +135,21 @@ export default function DashboardMusician() {
       >
         <BlurView intensity={50} tint="light" style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <Pressable onPress={toggleIdentity} style={styles.avatarWrap}>
+            <Pressable onPress={goToBandDashboard} style={styles.avatarWrap}>
               <View style={styles.avatar}>
-                <Ionicons
-                  name={isBand ? "people" : "person"}
-                  size={20}
-                  color="#7c3aed"
-                />
+                <Ionicons name="person" size={20} color="#7c3aed" />
               </View>
             </Pressable>
             <View style={styles.headerText}>
               <Text style={styles.headerTitle}>{headerLabel}</Text>
-              <Text style={styles.headerSubtitle}>Good day, {displayName.split(" ")[0]}</Text>
+              <Text style={styles.headerSubtitle}>Good day, {musicianName.split(" ")[0]}</Text>
             </View>
             <Pressable style={styles.bellButton} hitSlop={8}>
               <Ionicons name="notifications" size={20} color="#7c3aed" />
             </Pressable>
           </View>
           <Text style={styles.identityHint}>
-            Tap your avatar to preview band mode (placeholder)
+            {bandName ? "Tap your avatar to switch to band view" : "Create a band to unlock band view"}
           </Text>
         </BlurView>
 
@@ -188,7 +204,7 @@ export default function DashboardMusician() {
         </View>
 
         <View style={styles.statusRow}>
-          {PLACEHOLDER_STATUS.map((item) => (
+          {statusItems.map((item) => (
             <BlurView key={item.key} intensity={40} tint="light" style={styles.statusCard}>
               <View style={styles.statusDot} />
               <Text style={styles.statusValue}>{item.value}</Text>
@@ -197,7 +213,7 @@ export default function DashboardMusician() {
           ))}
         </View>
 
-        {!isBand ? (
+        {!bandName ? (
           <Pressable onPress={handleCreateBand} style={styles.createBandButton}>
             <Ionicons name="add-circle" size={18} color="#7c3aed" />
             <Text style={styles.createBandText}>Create a band</Text>
@@ -266,7 +282,7 @@ export default function DashboardMusician() {
                 if (item.key !== "home") {
                   router.push({
                     pathname: item.route,
-                    params: { fullName, instruments, genres },
+                    params: { fullName, instruments, genres, bandName, bandPhotoUri },
                   });
                 }
               }}
@@ -284,6 +300,7 @@ export default function DashboardMusician() {
           );
         })}
       </BlurView>
+      <SwitchLoadingOverlay visible={isSwitching} label="Switching to Band dashboard..." />
     </View>
   );
 }

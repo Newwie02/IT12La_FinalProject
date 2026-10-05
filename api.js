@@ -1,10 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-const BASE_URL =
-  Platform.OS === "web"
-    ? "http://localhost:5000/api"
-    : "http://192.168.254.108:5000/api";
+const BASE_URL = "http://192.168.100.15:5000/api";
 
     
 // SecureStore doesn't work on web, so fall back to localStorage there.
@@ -79,6 +76,14 @@ export function createBand({ name, genre, location, bio, photoUrl }) {
     auth: true,
     body: { name, genre, location, bio, photoUrl },
   });
+}
+export async function getMyBand() {
+  try {
+    return await request("/bands/me", { auth: true });
+  } catch (err) {
+    if (err.message === "No band yet") return null;
+    throw err;
+  }
 }
 
 // --- Gigs ---

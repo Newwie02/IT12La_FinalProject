@@ -18,6 +18,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useAppAlert } from "../components/useAppAlert";
 import { createBand } from "../api";
 
+
 // GigMatch — Create a band (2-step wizard, no backend yet)
 // Route: app/create-band.jsx  →  "/create-band"
 // Step 1: band basics. Step 2: music info, event types, and songs.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, Image } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
+import { getMyBand } from "../api";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
@@ -45,7 +46,16 @@ function currentMonthYear() {
 
 export default function DashboardBand() {
   const router = useRouter();
-  const { bandName, fullName, instruments, genres, bandPhotoUri } = useLocalSearchParams();
+const params = useLocalSearchParams();
+const { fullName, instruments, genres } = params;
+const [band, setBand] = useState(null);
+
+useEffect(() => {
+  getMyBand().then(setBand).catch((e) => console.log("getMyBand error:", e.message));
+}, []);
+
+const bandName = band?.name ?? params.bandName;
+const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
 
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
@@ -53,13 +63,13 @@ export default function DashboardBand() {
   const [isSwitching, setIsSwitching] = useState(false);
   const { showAlert, AlertModal } = useAppAlert();
 
-  const backToMusicianView = () => {
+const backToMusicianView = () => {
     if (isSwitching) return;
     setIsSwitching(true);
     setTimeout(() => {
       router.push({
         pathname: "/dashboard-musician",
-        params: { fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri },
+        params: { fullName, instruments, genres, bandName, bandPhotoUri },
       });
       setIsSwitching(false);
     }, 700);
