@@ -82,6 +82,7 @@ export default function GigMatchSignUp() {
         email: email.trim(),
         password,
         role: "musician",
+        phone: phone.trim(),
       });
 
       await saveToken(token);

@@ -13,7 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
-import { getConversations, getConversation, sendMessage, getToken } from "../api";
+import { getConversations, getConversation, sendMessage, getMe } from "../api";
 
 // GigMatch — Messages screen
 // Route: app/messages.jsx  →  "/messages"
@@ -56,11 +56,8 @@ export default function Messages() {
   useEffect(() => {
     (async () => {
       try {
-        const token = await getToken();
-        if (token) {
-          const payload = JSON.parse(atob(token.split(".")[1]));
-          setMyId(payload.id);
-        }
+        const me = await getMe();
+        setMyId(me.id);
       } catch {
         // ignore
       }

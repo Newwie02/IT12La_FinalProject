@@ -40,7 +40,12 @@ export default function GigMatchLogin() {
     const { token, user } = await login({ email: email.trim(), password });
     await saveToken(token);
 
-    const destination = user.role === "client" ? "/dashboard-client" : "/dashboard-musician";
+    // role-select offers "organizer" (and older accounts say "client"),
+    // so check both — otherwise organizers get sent to the musician dashboard.
+    const destination =
+      user.role === "client" || user.role === "organizer"
+        ? "/dashboard-client"
+        : "/dashboard-musician";
     router.replace({ pathname: destination, params: { fullName: user.name, role: user.role } });
   } catch (err) {
     setError(err.message || "Login failed. Check your email and password.");
