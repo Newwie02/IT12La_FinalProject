@@ -7,38 +7,17 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyBand } from "../api";
+import { getMyBand, getGigs, getMusicians, resolveUrl } from "../api";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
-// Reached from dashboard-musician.jsx by tapping the avatar once a band
-// exists. Light glassmorphism shell, fully interactive with local state —
-// no backend yet, so nothing persists past a reload.
 
-const PLACEHOLDER_GIG_POSTINGS = [
-  {
-    id: "1",
-    posterName: "Krizza Yeke",
-    tags: ["Jazz", "Pop"],
-    location: "Madaum, Tagum",
-    price: "₱3,000",
-    description: "Small birthday party, looking for a 2-hour acoustic set...",
-  },
-  {
-    id: "2",
-    posterName: "Krizza Yeke",
-    tags: ["Jazz", "Rock"],
-    location: "Madaum, Tagum",
-    price: "₱7,000",
-    description: "Family Reunion, need full band for the whole evening...",
-  },
-];
-
-const PLACEHOLDER_SUGGESTED_MUSICIANS = [
-  { id: "1", name: "Angel Daro", instrument: "Drummer", genre: "Pop" },
-  { id: "2", name: "Ivy Grace Mananday", instrument: "Electric Guitar", genre: "Rock" },
-  { id: "3", name: "Marco Villar", instrument: "Bass Guitar", genre: "R&B" },
-];
+// Accepts an array, a "Rock, Pop" string, or nothing, and always returns an array.
+function toList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string" && value.trim()) return value.split(",").map((s) => s.trim());
+  return [];
+}
 
 function currentMonthYear() {
   return new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -46,16 +25,53 @@ function currentMonthYear() {
 
 export default function DashboardBand() {
   const router = useRouter();
-const params = useLocalSearchParams();
-const { fullName, instruments, genres } = params;
-const [band, setBand] = useState(null);
+  const params = useLocalSearchParams();
+  const { fullName, instruments, genres } = params;
+  const [band, setBand] = useState(null);
+  const [gigs, setGigs] = useState([]);
+  const [musicians, setMusicians] = useState([]);
 
-useEffect(() => {
-  getMyBand().then(setBand).catch((e) => console.log("getMyBand error:", e.message));
-}, []);
+  useEffect(() => {
+    getMyBand()
+      .then(setBand)
+      .catch((e) => console.log("getMyBand error:", e.message));
 
-const bandName = band?.name ?? params.bandName;
-const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
+    getGigs()
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        console.log("GIGS RESPONSE:", JSON.stringify(list[0]));
+        setGigs(
+          list.map((g) => ({
+            id: String(g.id),
+            posterName: g.title ?? g.poster?.name ?? "Gig",
+            tags: toList(g.genres ?? g.genre),
+            location: g.location ?? "",
+            price: g.pay != null ? `₱${Number(g.pay).toLocaleString()}` : "",
+            description: g.description ?? "",
+          }))
+        );
+      })
+      .catch((e) => console.log("getGigs error:", e.message));
+
+    getMusicians()
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        console.log("MUSICIANS RESPONSE:", JSON.stringify(list[0]));
+        setMusicians(
+          list.map((m) => ({
+            id: String(m.id),
+            name: m.name ?? "Musician",
+            instrument: toList(m.instruments ?? m.instrument)[0] ?? "Musician",
+            genre: toList(m.genres ?? m.genre)[0] ?? "",
+            photoUrl: m.photoUrl ?? m.avatarUrl ?? null,
+          }))
+        );
+      })
+      .catch((e) => console.log("getMusicians error:", e.message));
+  }, []);
+
+  const bandName = band?.name ?? params.bandName;
+  const bandPhotoUri = resolveUrl(band?.photoUrl) ?? params.bandPhotoUri;
 
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
@@ -63,7 +79,7 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
   const [isSwitching, setIsSwitching] = useState(false);
   const { showAlert, AlertModal } = useAppAlert();
 
-const backToMusicianView = () => {
+  const backToMusicianView = () => {
     if (isSwitching) return;
     setIsSwitching(true);
     setTimeout(() => {
@@ -88,10 +104,15 @@ const backToMusicianView = () => {
     });
   };
 
+  // CHANGED: now sends the musician's id so the profile screen can load the full profile
   const handleSuggestedMusicianPress = (person) => {
     router.push({
       pathname: "/musician-profile",
-      params: { name: person.name, tags: `${person.instrument} · ${person.genre}` },
+      params: {
+        id: person.id,
+        name: person.name,
+        tags: `${person.instrument} · ${person.genre}`,
+      },
     });
   };
 
@@ -183,7 +204,10 @@ const backToMusicianView = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.gigRow}
         >
-          {PLACEHOLDER_GIG_POSTINGS.map((gig) => (
+          {gigs.length === 0 ? (
+            <Text style={styles.emptyText}>No gig postings yet.</Text>
+          ) : null}
+          {gigs.map((gig) => (
             <Pressable key={gig.id} onPress={() => handleGigPress(gig)}>
               <BlurView intensity={40} tint="light" style={styles.gigCard}>
                 <View style={styles.gigTopRow}>
@@ -220,10 +244,20 @@ const backToMusicianView = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.portfolioRow}
         >
-          {PLACEHOLDER_SUGGESTED_MUSICIANS.map((person) => (
+          {musicians.length === 0 ? (
+            <Text style={styles.emptyText}>No musicians yet.</Text>
+          ) : null}
+          {musicians.map((person) => (
             <Pressable key={person.id} onPress={() => handleSuggestedMusicianPress(person)}>
               <BlurView intensity={40} tint="light" style={styles.portfolioCard}>
-                <View style={styles.portfolioAvatar} />
+                <View style={styles.portfolioAvatar}>
+                  {person.photoUrl ? (
+                    <Image
+                      source={{ uri: resolveUrl(person.photoUrl) }}
+                      style={styles.avatarImage}
+                    />
+                  ) : null}
+                </View>
                 <Text style={styles.suggestedName} numberOfLines={1}>
                   {person.name}
                 </Text>
@@ -231,9 +265,11 @@ const backToMusicianView = () => {
                   <View style={styles.tagChipGreen}>
                     <Text style={styles.tagChipGreenText}>{person.instrument}</Text>
                   </View>
-                  <View style={styles.tagChip}>
-                    <Text style={styles.tagChipText}>{person.genre}</Text>
-                  </View>
+                  {person.genre ? (
+                    <View style={styles.tagChip}>
+                      <Text style={styles.tagChipText}>{person.genre}</Text>
+                    </View>
+                  ) : null}
                 </View>
               </BlurView>
             </Pressable>
@@ -327,6 +363,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { color: "#111827", fontSize: 15, fontWeight: "700" },
   seeAll: { color: PURPLE, fontSize: 13, fontWeight: "600" },
+  emptyText: { color: "#9ca3af", fontSize: 13, paddingVertical: 12 },
 
   tagChip: {
     backgroundColor: "rgba(124,58,237,0.1)",
@@ -358,6 +395,7 @@ const styles = StyleSheet.create({
     width: 32,
     borderRadius: 16,
     backgroundColor: "rgba(124,58,237,0.15)",
+    overflow: "hidden",
   },
   gigTags: { flexDirection: "row", gap: 6, flexWrap: "wrap", flex: 1 },
   gigName: { color: "#111827", fontSize: 13, fontWeight: "700" },
@@ -380,7 +418,8 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     backgroundColor: "rgba(124,58,237,0.15)",
     marginBottom: 10,
+    overflow: "hidden",
   },
   suggestedName: { color: "#111827", fontSize: 12, fontWeight: "700", marginBottom: 6 },
   portfolioTagRow: { flexDirection: "row", gap: 4, flexWrap: "wrap", justifyContent: "center" },
-}); 
+});

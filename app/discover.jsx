@@ -5,12 +5,13 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Image,
   RefreshControl,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
-import { getBands } from "../api";
+import { getBands, resolveUrl } from "../api";
 
 // GigMatch — Discover screen
 // Route: app/discover.jsx  →  "/discover"
@@ -80,7 +81,14 @@ export default function Discover() {
             {bands.map((band) => (
               <View key={band.id} style={styles.bandCard}>
                 <View style={styles.bandAvatar}>
-                  <Ionicons name="people" size={22} color="#7c3aed" />
+                  {band.photoUrl ? (
+                    <Image
+                      source={{ uri: resolveUrl(band.photoUrl) }}
+                      style={styles.bandAvatarImage}
+                    />
+                  ) : (
+                    <Ionicons name="people" size={22} color="#7c3aed" />
+                  )}
                 </View>
                 <View style={styles.bandInfo}>
                   <Text style={styles.bandName}>{band.name}</Text>
@@ -99,12 +107,12 @@ export default function Discover() {
           </View>
         )}
       </ScrollView>
-        <BottomNav
-      homeRoute={bandName ? "/dashboard-band" : "/dashboard-musician"}
-      profileRoute="/profile-musician"
-      params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
-      showGigs={!!bandName}
-    />
+      <BottomNav
+        homeRoute={bandName ? "/dashboard-band" : "/dashboard-musician"}
+        profileRoute="/profile-musician"
+        params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
+        showGigs={!!bandName}
+      />
     </View>
   );
 }
@@ -148,7 +156,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(124,58,237,0.12)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  bandAvatarImage: { width: "100%", height: "100%" },
   bandInfo: { flex: 1 },
   bandName: { color: "#111827", fontSize: 15, fontWeight: "700" },
   bandMeta: { color: "#7c3aed", fontSize: 12, fontWeight: "600", marginTop: 2 },

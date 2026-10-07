@@ -2,8 +2,17 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
+
 const host = Constants.expoConfig?.hostUri?.split(":")[0];
-const BASE_URL = `http://${host ?? "192.168.100.15"}:5000/api`;
+export const SERVER_URL = `http://${host ?? "192.168.100.15"}:5000`; // no /api
+const BASE_URL = `${SERVER_URL}/api`;
+
+// Turns "/uploads/abc.jpg" into a full URL the phone can load.
+export function resolveUrl(path) {
+  if (!path) return null;
+  if (/^(https?:|file:|data:)/.test(path)) return path;
+  return `${SERVER_URL}${path}`;
+}
 
 // SecureStore doesn't work on web, so fall back to localStorage there.
 export async function saveToken(token) {
@@ -55,7 +64,6 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   }
 
   if (!res.ok) {
-    // Keep the server's "field" so the screen can show the error under the right input.
     const e = new Error(data.message || "Something went wrong");
     e.field = data.field;
     throw e;
@@ -85,6 +93,10 @@ export function getMyProfile() {
   return request("/users/me", { auth: true });
 }
 
+export function getMe() {
+  return getMyProfile();
+}
+
 export function updateMyProfile(profile) {
   return request("/users/me", { method: "PATCH", auth: true, body: profile });
 }
@@ -107,7 +119,6 @@ export function changePassword({ currentPassword, newPassword }) {
 
 // Uploads a picked image to the server and returns its public URL.
 export async function uploadPhoto(uri) {
-  // Read the picked image into a real Blob (works for file:// on phones and blob: on web)
   const blob = await (await fetch(uri)).blob();
 
   const form = new FormData();
@@ -120,7 +131,7 @@ export async function uploadPhoto(uri) {
     body: form,
   });
 
-   const text = await res.text();
+  const text = await res.text();
   let data = {};
   try { data = JSON.parse(text); } catch {}
   if (!res.ok) {
