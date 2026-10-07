@@ -97,23 +97,21 @@ export function getMusicians() {
   return request("/users/musicians", { auth: true });
 }
 
+export function changePassword({ currentPassword, newPassword }) {
+  return request("/users/me/password", {
+    method: "PATCH",
+    auth: true,
+    body: { currentPassword, newPassword },
+  });
+}
+
 // Uploads a picked image to the server and returns its public URL.
 export async function uploadPhoto(uri) {
-  const form = new FormData();
+  // Read the picked image into a real Blob (works for file:// on phones and blob: on web)
+  const blob = await (await fetch(uri)).blob();
 
-  if (Platform.OS === "web") {
-    // On web the picker gives a blob: URL, so fetch it and send the real file
-    const blob = await (await fetch(uri)).blob();
-    form.append("photo", blob, "photo.jpg");
-  } else {
-    const name = uri.split("/").pop() || "photo.jpg";
-    const ext = (/\.(\w+)$/.exec(name)?.[1] || "jpg").toLowerCase();
-    form.append("photo", {
-      uri,
-      name,
-      type: `image/${ext === "jpg" ? "jpeg" : ext}`,
-    });
-  }
+  const form = new FormData();
+  form.append("photo", blob, "photo.jpg");
 
   const token = await getToken();
   const res = await fetch(`${BASE_URL}/upload`, {
@@ -122,8 +120,12 @@ export async function uploadPhoto(uri) {
     body: form,
   });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Upload failed");
+   const text = await res.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch {}
+  if (!res.ok) {
+    throw new Error(data.message || `Upload failed (${res.status}): ${text.slice(0, 120)}`);
+  }
   return data.url;
 }
 

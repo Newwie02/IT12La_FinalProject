@@ -16,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useAppAlert } from "../components/useAppAlert";
-import { createBand } from "../api";
+import { createBand, uploadPhoto } from "../api";
 
 
 // GigMatch — Create a band (2-step wizard, no backend yet)
@@ -209,14 +209,20 @@ const handleFinish = async () => {
     return;
   }
 
-  setSaving(true);
+   setSaving(true);
   try {
+    // Upload first so we save a real URL, not a blob:/file: path
+    let photoUrl = "";
+    if (photoUri) {
+      photoUrl = /^https?:\/\//.test(photoUri) ? photoUri : await uploadPhoto(photoUri);
+    }
+
     await createBand({
       name: bandName.trim(),
       genre: primaryGenres.join(", "),
       location: barangay,
       bio: description.trim(),
-      photoUrl: photoUri ?? "",
+      photoUrl,
     });
 
     router.replace({
@@ -226,7 +232,7 @@ const handleFinish = async () => {
         instruments: p.instruments,
         genres: p.genres,
         bandName: bandName.trim(),
-        bandPhotoUri: photoUri ?? "",
+        bandPhotoUri: photoUrl,
         bandDescription: description.trim(),
         dateJoined,
         bandLocation: barangay,

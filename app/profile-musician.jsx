@@ -1,22 +1,19 @@
+import { useState, useCallback } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, Image } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import { useAppAlert } from "../components/useAppAlert";
+import { getMyProfile, clearToken } from "../api";
 
-// GigMatch — Musician profile screen
+// GigMatch — Musician profile screen (your own profile)
 // Route: app/profile-musician.jsx  →  "/profile-musician"
-// Reached by tapping the Profile tab in BottomNav. No backend yet, so
-// account/availability/payment/ID/ratings rows are placeholders that just
-// navigate — swap PLACEHOLDER_* fallbacks for real data once profile
-// fields are actually collected and persisted.
-//
-// Note: params like headline/location/gender/birthday aren't produced by
-// any screen yet (only fullName/instruments/genres/bandName flow through
-// today). This screen accepts them if present and falls back to sensible
-// placeholders otherwise, the same pattern the dashboards use.
+// Reached by tapping the Profile tab in BottomNav. Your details are loaded
+// from the server (GET /users/me) every time the screen is focused, so edits
+// made in Edit Profile show up right away and survive logging out and in.
 
 const MENU_ITEMS = [
+  { key: "edit", icon: "create-outline", label: "Edit Profile", route: "/edit-profile" },
   { key: "account", icon: "settings-outline", label: "Account Settings", route: "/account-settings" },
   { key: "availability", icon: "calendar-outline", label: "Availability Calendar", route: "/availability-calendar" },
   { key: "payment", icon: "card-outline", label: "Payment Method", route: "/payment-method" },
@@ -24,36 +21,64 @@ const MENU_ITEMS = [
   { key: "ratings", icon: "star-outline", label: "Ratings Review", route: "/ratings-review" },
 ];
 
+function toList(value) {
+  return value ? String(value).split(",").filter(Boolean) : [];
+}
+
+function formatBirthday(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+}
+
 export default function ProfileMusician() {
   const router = useRouter();
-  const {
-    fullName,
-    instruments,
-    genres,
-    bandName,
-    bandPhotoUri,
-    headline,
-    location,
-    gender,
-    birthday,
-    photoUri,
-  } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const { bandName, bandPhotoUri } = params;
   const { showAlert, AlertModal } = useAppAlert();
 
-  const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
+  const [me, setMe] = useState(null);
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  // Reload every time the screen comes into focus (e.g. after Edit Profile)
+  useFocusEffect(
+    useCallback(() => {
+      getMyProfile()
+        .then((data) => {
+          setMe(data);
+          setPhotoFailed(false);
+        })
+        .catch((e) => console.log("getMyProfile error:", e.message));
+    }, [])
+  );
+
+  const fullName = me?.name ?? params.fullName;
+  const instrumentTags = toList(me?.instruments ?? params.instruments);
+  const genreTags = toList(me?.genres ?? params.genres);
+
+  // Only real server URLs can be shown; blob:/file: paths are skipped
+  const photo = me?.photoUrl;
+  const showPhoto = photo && /^https?:\/\//.test(photo) && !photoFailed;
 
   const resolvedName = fullName?.trim() ? fullName.trim() : "Your name";
-  const resolvedHeadline = headline?.trim()
-    ? headline.trim()
+  const resolvedHeadline = me?.stageName?.trim()
+    ? me.stageName.trim()
     : instrumentTags[0] || "Musician";
-  const resolvedLocation = location?.trim() ? location.trim() : "Location not set";
-  const resolvedGender = gender?.trim() ? gender.trim() : "Not specified";
-  const resolvedBirthday = birthday?.trim() ? birthday.trim() : "Not set";
+  const resolvedLocation = me?.barangay?.trim() ? me.barangay.trim() : "Location not set";
+  const resolvedGender = me?.gender?.trim() ? me.gender.trim() : "Not specified";
+  const resolvedBirthday = formatBirthday(me?.birthday) ?? "Not set";
 
   const handleMenuPress = (item) => {
     router.push({
       pathname: item.route,
-      params: { fullName, instruments, genres, bandName, bandPhotoUri },
+      params: {
+        fullName,
+        instruments: instrumentTags.join(","),
+        genres: genreTags.join(","),
+        bandName,
+        bandPhotoUri,
+      },
     });
   };
 
@@ -68,7 +93,10 @@ export default function ProfileMusician() {
         {
           label: "Log out",
           style: "destructive",
-          onPress: () => router.replace("/"),
+          onPress: async () => {
+            await clearToken();
+            router.replace("/");
+          },
         },
       ],
     });
@@ -86,10 +114,14 @@ export default function ProfileMusician() {
 
           <View style={styles.identityRow}>
             <View style={styles.avatar}>
-              {bandPhotoUri || photoUri ? (
-                <Image source={{ uri: photoUri || bandPhotoUri }} style={styles.avatarImage} />
+              {showPhoto ? (
+                <Image
+                  source={{ uri: photo }}
+                  style={styles.avatarImage}
+                  onError={() => setPhotoFailed(true)}
+                />
               ) : (
-                <Ionicons name="person" size={26} color="rgba(255,255,255,0.6)" />
+                <Ionicons name="person" size={26} color="rgba(124,58,237,0.6)" />
               )}
             </View>
             <View style={styles.identityText}>
@@ -138,7 +170,13 @@ export default function ProfileMusician() {
       <BottomNav
         homeRoute={bandName ? "/dashboard-band" : "/dashboard-musician"}
         profileRoute="/profile-musician"
-        params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
+        params={{
+          fullName,
+          instruments: instrumentTags.join(","),
+          genres: genreTags.join(","),
+          bandName,
+          bandPhotoUri,
+        }}
         showGigs={false}
       />
       {AlertModal}

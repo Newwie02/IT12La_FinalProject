@@ -11,7 +11,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { updateMyProfile } from "../api";
+import { updateMyProfile, uploadPhoto } from "../api";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -142,6 +142,12 @@ export default function ProfileSetup() {
       return;
     }
     try {
+      // Upload first so we save a real URL, not a blob:/file: path
+      let photoUrl = "";
+      if (photoUri) {
+        photoUrl = /^https?:\/\//.test(photoUri) ? photoUri : await uploadPhoto(photoUri);
+      }
+
       await updateMyProfile({
         stageName,
         experience,
@@ -151,7 +157,7 @@ export default function ProfileSetup() {
         bio: bio.trim(),
         gender,
         birthday: birthday ? birthday.toISOString() : null,
-        photoUrl: photoUri ?? "",
+        photoUrl,
       });
     } catch (err) {
       Alert.alert("Couldn't save profile", err.message || "Please try again.");

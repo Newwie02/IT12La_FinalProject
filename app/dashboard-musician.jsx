@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -6,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Image,
   Alert,
   Modal,
 } from "react-native";
@@ -44,14 +42,15 @@ const NAV_ITEMS = [
 export default function DashboardMusician() {
   const router = useRouter();
   const params = useLocalSearchParams();
-const { fullName, instruments, genres } = params;
-const [band, setBand] = useState(null);
-useEffect(() => {
-  getMyBand().then(setBand).catch((e) => console.log("getMyBand error:", e.message));
-}, []);
+  const { fullName, instruments, genres } = params;
 
-const bandName = band?.name ?? params.bandName;
-const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
+  const [band, setBand] = useState(null);
+  useEffect(() => {
+    getMyBand().then(setBand).catch((e) => console.log("getMyBand error:", e.message));
+  }, []);
+
+  const bandName = band?.name ?? params.bandName;
+  const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
   const [activeTab, setActiveTab] = useState("home");
   const [isSwitching, setIsSwitching] = useState(false);
 
@@ -63,9 +62,8 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
   const headerLabel = `Musician — ${musicianName}`;
-    const [allMusiciansOpen, setAllMusiciansOpen] = useState(false);
+  const [allMusiciansOpen, setAllMusiciansOpen] = useState(false);
   const visibleMusicians = musicians.slice(0, 3);
-
 
   const statusItems = [
     { key: "active", label: "Active status", value: "Online" },
@@ -87,7 +85,7 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
     loadMusicians().finally(() => setLoadingMusicians(false));
   }, [loadMusicians]);
 
- const goToBandDashboard = () => {
+  const goToBandDashboard = () => {
     if (!bandName) {
       Alert.alert("No band yet", "Create or join a band first before switching to band view.");
       return;
@@ -139,9 +137,7 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
         <BlurView intensity={50} tint="light" style={styles.headerCard}>
           <View style={styles.headerRow}>
             <Pressable onPress={goToBandDashboard} style={styles.avatarWrap}>
-              <View style={person.photoUrl}>
-                <Ionicons name="person" size={20} color="#7c3aed" />
-              </View>
+              <Avatar size={40} />
             </Pressable>
             <View style={styles.headerText}>
               <Text style={styles.headerTitle}>{headerLabel}</Text>
@@ -234,16 +230,16 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.recommendedRow}
         >
-          {PLACEHOLDER_RECOMMENDED.map((band) => (
-            <BlurView key={band.id} intensity={40} tint="light" style={styles.recommendedCard}>
+          {PLACEHOLDER_RECOMMENDED.map((rec) => (
+            <BlurView key={rec.id} intensity={40} tint="light" style={styles.recommendedCard}>
               <View style={styles.recommendedAvatar} />
-              <Text style={styles.recommendedName}>{band.name}</Text>
-              <Text style={styles.recommendedTags}>{band.tags}</Text>
+              <Text style={styles.recommendedName}>{rec.name}</Text>
+              <Text style={styles.recommendedTags}>{rec.tags}</Text>
             </BlurView>
           ))}
         </ScrollView>
 
-              <View style={styles.sectionHeaderRow}>
+        <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Fellow musician</Text>
           {musicians.length > 3 ? (
             <Pressable onPress={() => setAllMusiciansOpen(true)}>
@@ -257,9 +253,9 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
         ) : musicians.length === 0 ? (
           <Text style={styles.emptyText}>No other musicians yet.</Text>
         ) : (
-                  visibleMusicians.map((person) => (
+          visibleMusicians.map((person) => (
             <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
-             <Avatar uri={person.photoUrl} />
+              <Avatar uri={person.photoUrl} />
               <View style={styles.personText}>
                 <Text style={styles.personName}>{person.name}</Text>
                 <Text style={styles.personMeta}>{person.role}</Text>
@@ -306,7 +302,8 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
           );
         })}
       </BlurView>
-           <Modal
+
+      <Modal
         visible={allMusiciansOpen}
         animationType="slide"
         transparent
@@ -367,14 +364,6 @@ const styles = StyleSheet.create({
   },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatarWrap: { borderRadius: 20 },
-  avatar: {
-    height: 40,
-    width: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(124,58,237,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   headerText: { flex: 1 },
   headerTitle: { color: "#111827", fontSize: 16, fontWeight: "700" },
   headerSubtitle: { color: "#6b7280", fontSize: 13, marginTop: 2 },
@@ -498,12 +487,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     padding: 12,
     marginBottom: 10,
-  },
-  personAvatar: {
-    height: 44,
-    width: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(124,58,237,0.15)",
   },
   personText: { flex: 1 },
   personName: { color: "#111827", fontSize: 13, fontWeight: "700" },
