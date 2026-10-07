@@ -1,23 +1,27 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   ScrollView,
-  Alert,
-  Modal,
+  Image,
+  ActivityIndicator,
 } from "react-native";
-import { getMusicians, getMyBand } from "../api";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import Avatar from "../components/Avatar";
+import { getMusicians, resolveUrl } from "../api";
+
+// GigMatch — Musician / Band dashboard (home)
 // Route: app/dashboard-musician.jsx  →  "/dashboard-musician"
-// This screen always represents the MUSICIAN view. If the user has a real
-// band (bandName param present), tapping the avatar navigates to the real
-// dashboard-band.jsx screen instead of faking a local "band preview".
+// "Fellow musician" now loads REAL musicians from the backend (GET /api/users/musicians)
+// and "View Profile" opens /musician-profile with the real user id.
+
+const PLACEHOLDER_USER = {
+  bandName: "The Band",
+};
 
 const PLACEHOLDER_REMINDER = {
   date: "Sat, Oct 18 · 6:00 PM",
@@ -27,78 +31,59 @@ const PLACEHOLDER_REMINDER = {
   price: "₱17,000",
 };
 
+const PLACEHOLDER_STATUS = [
+  { key: "active", label: "Active status", value: "Online" },
+  { key: "band", label: "Band Status", value: "Banded" },
+  { key: "availability", label: "Availability", value: "Available" },
+];
+
 const PLACEHOLDER_RECOMMENDED = [
   { id: "1", name: "Ctrl+S", tags: "Pop, R&B Band" },
   { id: "2", name: "IV of Speeds", tags: "Rock, Pop, R&B Band" },
 ];
 
 const NAV_ITEMS = [
-  { key: "home", label: "Home", icon: "home", route: "/dashboard-musician" },
-  { key: "discover", label: "Discover", icon: "compass", route: "/discover" },
-  { key: "messages", label: "Messages", icon: "chatbubble-ellipses", route: "/messages" },
-  { key: "profile", label: "Profile", icon: "person", route: "/profile-musician" },
+  { key: "home", label: "Home", icon: "home" },
+  { key: "discover", label: "Discover", icon: "compass" },
+  { key: "messages", label: "Messages", icon: "chatbubble-ellipses" },
+  { key: "profile", label: "Profile", icon: "person" },
 ];
 
 export default function DashboardMusician() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const { fullName, instruments, genres } = params;
-
-  const [band, setBand] = useState(null);
-  useEffect(() => {
-    getMyBand().then(setBand).catch((e) => console.log("getMyBand error:", e.message));
-  }, []);
-
-  const bandName = band?.name ?? params.bandName;
-  const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
+  const { fullName, instruments, genres } = useLocalSearchParams();
+  const [identity, setIdentity] = useState("musician"); // "musician" | "band" — placeholder toggle
   const [activeTab, setActiveTab] = useState("home");
-  const [isSwitching, setIsSwitching] = useState(false);
 
+  // Real musicians from the backend
   const [musicians, setMusicians] = useState([]);
   const [loadingMusicians, setLoadingMusicians] = useState(true);
+  const [musiciansError, setMusiciansError] = useState(null);
+
+  useEffect(() => {
+    getMusicians()
+      .then((data) => setMusicians(data))
+      .catch((e) => setMusiciansError(e.message || "Couldn't load musicians."))
+      .finally(() => setLoadingMusicians(false));
+  }, []);
+
+  const openProfile = (person) => {
+    router.push({
+      pathname: "/musician-profile",
+      params: { id: String(person.id), name: person.name, tags: person.role },
+    });
+  };
 
   const musicianName = fullName?.trim() ? fullName.trim() : "Musician";
   const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
-  const headerLabel = `Musician — ${musicianName}`;
-  const [allMusiciansOpen, setAllMusiciansOpen] = useState(false);
-  const visibleMusicians = musicians.slice(0, 3);
+  const isBand = identity === "band";
+  const displayName = isBand ? PLACEHOLDER_USER.bandName : musicianName;
+  const headerLabel = isBand ? `Band — ${PLACEHOLDER_USER.bandName}` : `Musician — ${musicianName}`;
 
-  const statusItems = [
-    { key: "active", label: "Active status", value: "Online" },
-    { key: "band", label: "Band Status", value: bandName ? "Banded" : "Solo" },
-    { key: "availability", label: "Availability", value: "Available" },
-  ];
-
-  const loadMusicians = useCallback(async () => {
-    try {
-      const data = await getMusicians();
-      setMusicians(data);
-    } catch (err) {
-      setMusicians([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    setLoadingMusicians(true);
-    loadMusicians().finally(() => setLoadingMusicians(false));
-  }, [loadMusicians]);
-
-  const goToBandDashboard = () => {
-    if (!bandName) {
-      Alert.alert("No band yet", "Create or join a band first before switching to band view.");
-      return;
-    }
-    if (isSwitching) return;
-    setIsSwitching(true);
-    setTimeout(() => {
-      router.push({
-        pathname: "/dashboard-band",
-        params: { fullName, instruments, genres, bandName, bandPhotoUri },
-      });
-      setIsSwitching(false);
-    }, 700);
+  const toggleIdentity = () => {
+    setIdentity((prev) => (prev === "musician" ? "band" : "musician"));
   };
 
   const handleCreateBand = () => {
@@ -108,24 +93,9 @@ export default function DashboardMusician() {
     });
   };
 
-  const openMusicianProfile = (person) => {
-    router.push({
-      pathname: "/musician-profile",
-      params: {
-        userId: person.id,
-        name: person.name,
-        tags: person.role ?? "",
-        fullName,
-        instruments,
-        genres,
-        bandName,
-        bandPhotoUri,
-      },
-    });
-  };
-
   return (
     <View style={styles.page}>
+      {/* Soft pastel blobs for the glass surfaces to refract */}
       <View style={[styles.blob, styles.blobViolet]} />
       <View style={[styles.blob, styles.blobPink]} />
       <View style={[styles.blob, styles.blobBlue]} />
@@ -134,24 +104,32 @@ export default function DashboardMusician() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header */}
         <BlurView intensity={50} tint="light" style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <Pressable onPress={goToBandDashboard} style={styles.avatarWrap}>
-              <Avatar size={40} />
+            <Pressable onPress={toggleIdentity} style={styles.avatarWrap}>
+              <View style={styles.avatar}>
+                <Ionicons
+                  name={isBand ? "people" : "person"}
+                  size={20}
+                  color="#7c3aed"
+                />
+              </View>
             </Pressable>
             <View style={styles.headerText}>
               <Text style={styles.headerTitle}>{headerLabel}</Text>
-              <Text style={styles.headerSubtitle}>Good day, {musicianName.split(" ")[0]}</Text>
+              <Text style={styles.headerSubtitle}>Good day, {displayName.split(" ")[0]}</Text>
             </View>
             <Pressable style={styles.bellButton} hitSlop={8}>
               <Ionicons name="notifications" size={20} color="#7c3aed" />
             </Pressable>
           </View>
           <Text style={styles.identityHint}>
-            {bandName ? "Tap your avatar to switch to band view" : "Create a band to unlock band view"}
+            Tap your avatar to preview band mode (placeholder)
           </Text>
         </BlurView>
 
+        {/* Reminder */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Reminder</Text>
           <LinearGradient
@@ -173,6 +151,7 @@ export default function DashboardMusician() {
           </LinearGradient>
         </View>
 
+        {/* Tags */}
         <View style={styles.tagRow}>
           {instrumentTags.length > 0 || genreTags.length > 0 ? (
             <>
@@ -202,8 +181,9 @@ export default function DashboardMusician() {
           )}
         </View>
 
+        {/* Status cards */}
         <View style={styles.statusRow}>
-          {statusItems.map((item) => (
+          {PLACEHOLDER_STATUS.map((item) => (
             <BlurView key={item.key} intensity={40} tint="light" style={styles.statusCard}>
               <View style={styles.statusDot} />
               <Text style={styles.statusValue}>{item.value}</Text>
@@ -212,13 +192,15 @@ export default function DashboardMusician() {
           ))}
         </View>
 
-        {!bandName ? (
+        {/* Create band CTA — only relevant while in musician mode */}
+        {!isBand ? (
           <Pressable onPress={handleCreateBand} style={styles.createBandButton}>
             <Ionicons name="add-circle" size={18} color="#7c3aed" />
             <Text style={styles.createBandText}>Create a band</Text>
           </Pressable>
         ) : null}
 
+        {/* Recommended for you */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recommended for you</Text>
           <Pressable>
@@ -230,64 +212,61 @@ export default function DashboardMusician() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.recommendedRow}
         >
-          {PLACEHOLDER_RECOMMENDED.map((rec) => (
-            <BlurView key={rec.id} intensity={40} tint="light" style={styles.recommendedCard}>
+          {PLACEHOLDER_RECOMMENDED.map((band) => (
+            <BlurView key={band.id} intensity={40} tint="light" style={styles.recommendedCard}>
               <View style={styles.recommendedAvatar} />
-              <Text style={styles.recommendedName}>{rec.name}</Text>
-              <Text style={styles.recommendedTags}>{rec.tags}</Text>
+              <Text style={styles.recommendedName}>{band.name}</Text>
+              <Text style={styles.recommendedTags}>{band.tags}</Text>
             </BlurView>
           ))}
         </ScrollView>
 
+        {/* Fellow musician — REAL users from the database */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Fellow musician</Text>
-          {musicians.length > 3 ? (
-            <Pressable onPress={() => setAllMusiciansOpen(true)}>
-              <Text style={styles.seeAll}>See all</Text>
-            </Pressable>
-          ) : null}
         </View>
 
         {loadingMusicians ? (
-          <Text style={styles.emptyText}>Loading musicians...</Text>
+          <ActivityIndicator color={PURPLE} style={{ marginVertical: 20 }} />
+        ) : musiciansError ? (
+          <Text style={styles.emptyText}>{musiciansError}</Text>
         ) : musicians.length === 0 ? (
           <Text style={styles.emptyText}>No other musicians yet.</Text>
         ) : (
-          visibleMusicians.map((person) => (
-            <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
-              <Avatar uri={person.photoUrl} />
-              <View style={styles.personText}>
-                <Text style={styles.personName}>{person.name}</Text>
-                <Text style={styles.personMeta}>{person.role}</Text>
-              </View>
-              <Pressable
-                style={styles.viewProfileButton}
-                onPress={() => openMusicianProfile(person)}
-              >
-                <Text style={styles.viewProfileText}>View Profile</Text>
-              </Pressable>
-            </BlurView>
-          ))
+          musicians.map((person) => {
+            const photo = resolveUrl(person.photoUrl);
+            return (
+              <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
+                <View style={styles.personAvatar}>
+                  {photo ? (
+                    <Image source={{ uri: photo }} style={styles.personAvatarImage} />
+                  ) : (
+                    <Ionicons name="person" size={20} color="rgba(124,58,237,0.6)" />
+                  )}
+                </View>
+                <View style={styles.personText}>
+                  <Text style={styles.personName}>{person.name}</Text>
+                  <Text style={styles.personMeta}>{person.role}</Text>
+                </View>
+                <Pressable onPress={() => openProfile(person)} style={styles.viewProfileButton}>
+                  <Text style={styles.viewProfileText}>View Profile</Text>
+                </Pressable>
+              </BlurView>
+            );
+          })
         )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* Bottom navigation */}
       <BlurView intensity={60} tint="light" style={styles.bottomNav}>
         {NAV_ITEMS.map((item) => {
           const isActive = activeTab === item.key;
           return (
             <Pressable
               key={item.key}
-              onPress={() => {
-                setActiveTab(item.key);
-                if (item.key !== "home") {
-                  router.push({
-                    pathname: item.route,
-                    params: { fullName, instruments, genres, bandName, bandPhotoUri },
-                  });
-                }
-              }}
+              onPress={() => setActiveTab(item.key)}
               style={styles.navItem}
             >
               <Ionicons
@@ -302,43 +281,6 @@ export default function DashboardMusician() {
           );
         })}
       </BlurView>
-
-      <Modal
-        visible={allMusiciansOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setAllMusiciansOpen(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setAllMusiciansOpen(false)} />
-        <View style={styles.modalSheet}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>All musicians ({musicians.length})</Text>
-            <Pressable onPress={() => setAllMusiciansOpen(false)} hitSlop={10}>
-              <Text style={styles.modalClose}>✕</Text>
-            </Pressable>
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {musicians.map((person) => (
-              <View key={person.id} style={styles.modalPersonRow}>
-                <Avatar uri={person.photoUrl} />
-                <View style={styles.personText}>
-                  <Text style={styles.personName}>{person.name}</Text>
-                  <Text style={styles.personMeta}>{person.role}</Text>
-                </View>
-                <Pressable
-                  style={styles.viewProfileButton}
-                  onPress={() => {
-                    setAllMusiciansOpen(false);
-                    openMusicianProfile(person);
-                  }}
-                >
-                  <Text style={styles.viewProfileText}>View Profile</Text>
-                </Pressable>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -364,6 +306,14 @@ const styles = StyleSheet.create({
   },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatarWrap: { borderRadius: 20 },
+  avatar: {
+    height: 40,
+    width: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(124,58,237,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerText: { flex: 1 },
   headerTitle: { color: "#111827", fontSize: 16, fontWeight: "700" },
   headerSubtitle: { color: "#6b7280", fontSize: 13, marginTop: 2 },
@@ -475,7 +425,7 @@ const styles = StyleSheet.create({
   recommendedName: { color: "#111827", fontSize: 13, fontWeight: "700" },
   recommendedTags: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
 
-  emptyText: { color: "#9ca3af", fontSize: 13, marginBottom: 16 },
+  emptyText: { color: "#6b7280", fontSize: 13, textAlign: "center", marginVertical: 16 },
 
   personRow: {
     flexDirection: "row",
@@ -488,6 +438,16 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
   },
+  personAvatar: {
+    height: 44,
+    width: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(124,58,237,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  personAvatarImage: { width: "100%", height: "100%" },
   personText: { flex: 1 },
   personName: { color: "#111827", fontSize: 13, fontWeight: "700" },
   personMeta: { color: "#9ca3af", fontSize: 12, marginTop: 2 },
@@ -514,35 +474,4 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: "center", gap: 3 },
   navLabel: { color: "#9ca3af", fontSize: 10, fontWeight: "600" },
   navLabelActive: { color: PURPLE },
-
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
-  modalSheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: "75%",
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  modalTitle: { color: "#111827", fontSize: 15, fontWeight: "700" },
-  modalClose: { color: "#6b7280", fontSize: 16 },
-  modalPersonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
 });

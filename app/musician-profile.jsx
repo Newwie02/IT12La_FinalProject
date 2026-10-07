@@ -16,8 +16,6 @@ import { getMusicianById, resolveUrl } from "../api";
 // Route: app/musician-profile.jsx  →  "/musician-profile"
 // Opened with params: id, name, tags
 
-// CHANGE THIS to the route of your chat screen (e.g. "/chat" or "/conversation")
-
 function toList(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (typeof value === "string" && value.trim()) return value.split(",").map((s) => s.trim());
@@ -28,6 +26,10 @@ export default function MusicianProfile() {
   const router = useRouter();
   const { id, name, tags } = useLocalSearchParams();
 
+  // DEBUG: should print a long id like "a7a53dbf-9e1b-...". If it prints undefined,
+  // the screen that opens this one is not passing the id.
+  console.log("PROFILE ID:", id);
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -35,12 +37,16 @@ export default function MusicianProfile() {
 
   useEffect(() => {
     if (!id) {
+      // Before: this quit silently and showed empty "Not set" fields.
+      setError("Couldn't load this profile (no user id was passed to this screen).");
       setLoading(false);
       return;
     }
-    getMusicianById(id)
+    setLoading(true);
+    setError(null);
+    getMusicianById(String(id))
       .then((data) => {
-        console.log("MUSICIAN PROFILE RESPONSE:", JSON.stringify(data));
+        console.log("PROFILE DATA:", JSON.stringify(data));
         setUser(data);
       })
       .catch((e) => setError(e.message))
@@ -53,12 +59,12 @@ export default function MusicianProfile() {
   const photo = resolveUrl(user?.photoUrl);
   const showPhoto = photo && !photoFailed;
 
- const handleMessage = () => {
-  router.push({
-    pathname: "/messages",
-    params: { withId: String(id), with: displayName },
-  });
-};
+  const handleMessage = () => {
+    router.push({
+      pathname: "/messages",
+      params: { withId: String(id), with: displayName },
+    });
+  };
 
   return (
     <View style={styles.page}>
