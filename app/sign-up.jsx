@@ -14,15 +14,15 @@ import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { signup, saveToken } from "../api";
-
+ 
 // GigMatch — sign-up screen (Expo / React Native)
 // Route: app/sign-up.jsx  →  "/sign-up"
 // Flow: this is step 1 of 3. Step 2 is role-select.jsx ("/role-select"),
 // step 3 is profile-setup.jsx or profile-setup-organizer.jsx depending on role.
-
+ 
 export default function GigMatchSignUp() {
   const router = useRouter();
-
+ 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -32,36 +32,36 @@ export default function GigMatchSignUp() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-
+ 
   const validate = () => {
     const next = {};
-
+ 
     const trimmedName = name.trim();
     if (!trimmedName) next.name = "Enter your full name";
     else if (!/^[A-Za-z\s]{1,40}$/.test(trimmedName))
       next.name = "Letters only, max 40 characters";
-
+ 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) next.email = "Enter your email";
     else if (!/^[^\s@]+@gmail\.com$/i.test(trimmedEmail))
       next.email = "Must be a @gmail.com address";
-
+ 
     const trimmedPhone = phone.trim();
     if (!trimmedPhone) next.phone = "Enter your phone number";
     else if (!/^09\d{9}$/.test(trimmedPhone))
       next.phone = "11 digits, starting with 09";
-
+ 
     if (!password) next.password = "Enter a password";
     else if (password.length < 8) next.password = "At least 8 characters";
-
+ 
     if (!confirmPassword) next.confirmPassword = "Confirm your password";
     else if (confirmPassword !== password)
       next.confirmPassword = "Passwords don't match";
-
+ 
     setErrors(next);
     return Object.keys(next).length === 0;
   };
-
+ 
   const passwordsMatch =
     password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
   const canSubmit =
@@ -71,11 +71,11 @@ export default function GigMatchSignUp() {
     password.length > 0 &&
     confirmPassword.length > 0 &&
     passwordsMatch;
-
- const handleSubmit = async () => {
+ 
+  const handleSubmit = async () => {
     if (!validate()) return;
     setSubmitting(true);
-
+ 
     try {
       const { token } = await signup({
         name: name.trim(),
@@ -84,23 +84,36 @@ export default function GigMatchSignUp() {
         role: "musician",
         phone: phone.trim(),
       });
-
+ 
       await saveToken(token);
-
+ 
       router.push({ pathname: "/role-select", params: { fullName: name.trim() } });
     } catch (err) {
-      setErrors((e) => ({ ...e, email: err.message || "Signup failed. Try again." }));
+      const message = err.message || "Signup failed. Try again.";
+ 
+      // Prefer the field the server sent (err.field, set in api.js).
+      // Fall back to guessing from the message text.
+      const field =
+        err.field ||
+        (/phone/i.test(message) ? "phone" : /email/i.test(message) ? "email" : "form");
+ 
+      if (field === "form") {
+        Alert.alert("Signup failed", message);
+      } else {
+        setErrors((e) => ({ ...e, [field]: message }));
+      }
     } finally {
+      // Re-enable the Continue button after a failed attempt.
       setSubmitting(false);
     }
   };
-
+ 
   return (
     <View style={styles.page}>
       <View style={[styles.blob, styles.blobViolet]} />
       <View style={[styles.blob, styles.blobFuchsia]} />
       <View style={[styles.blob, styles.blobIndigo]} />
-
+ 
       <KeyboardAvoidingView
         style={styles.flexFill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -122,20 +135,20 @@ export default function GigMatchSignUp() {
                 </Pressable>
                 <Text style={styles.stepLabel}>Step 1 of 3</Text>
               </View>
-
+ 
               {/* Progress bar */}
               <View style={styles.progressRow}>
                 <View style={[styles.progressSegment, styles.progressFilled]} />
                 <View style={styles.progressSegment} />
                 <View style={styles.progressSegment} />
               </View>
-
+ 
               {/* Heading */}
               <Text style={styles.heading}>Create your account</Text>
               <Text style={styles.subheading}>
                 Join GigMatch and start booking gigs today.
               </Text>
-
+ 
               {/* Full name */}
               <View style={styles.field}>
                 <Text style={styles.label}>Full name</Text>
@@ -153,7 +166,7 @@ export default function GigMatchSignUp() {
                 />
                 {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
               </View>
-
+ 
               {/* Email */}
               <View style={styles.field}>
                 <Text style={styles.label}>Email</Text>
@@ -171,7 +184,7 @@ export default function GigMatchSignUp() {
                 />
                 {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
               </View>
-
+ 
               {/* Phone number */}
               <View style={styles.field}>
                 <Text style={styles.label}>Phone number</Text>
@@ -190,7 +203,7 @@ export default function GigMatchSignUp() {
                 />
                 {errors.phone ? <Text style={styles.errorText}>{errors.phone}</Text> : null}
               </View>
-
+ 
               {/* Password */}
               <View style={styles.field}>
                 <Text style={styles.label}>Password</Text>
@@ -216,7 +229,7 @@ export default function GigMatchSignUp() {
                 </View>
                 {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
               </View>
-
+ 
               {/* Confirm password */}
               <View style={styles.field}>
                 <Text style={styles.label}>Confirm password</Text>
@@ -251,7 +264,7 @@ export default function GigMatchSignUp() {
                   <Text style={styles.successText}>Passwords match</Text>
                 ) : null}
               </View>
-
+ 
               {/* Submit */}
               <Pressable
                 onPress={handleSubmit}
@@ -273,7 +286,7 @@ export default function GigMatchSignUp() {
                   </Text>
                 </LinearGradient>
               </Pressable>
-
+ 
               {/* Footer → back to login */}
               <View style={styles.footer}>
                 <Text style={styles.footerText}>Already have an account? </Text>
@@ -288,9 +301,9 @@ export default function GigMatchSignUp() {
     </View>
   );
 }
-
+ 
 const CARD_MAX_WIDTH = 384;
-
+ 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#0c0a18" },
   flexFill: { flex: 1 },
@@ -301,12 +314,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 40,
   },
-
+ 
   blob: { position: "absolute", borderRadius: 9999, opacity: 0.35 },
   blobViolet: { top: -80, left: -60, height: 280, width: 280, backgroundColor: "#7c3aed" },
   blobFuchsia: { top: "28%", right: -80, height: 320, width: 320, backgroundColor: "#d946ef" },
   blobIndigo: { bottom: -100, left: "20%", height: 320, width: 320, backgroundColor: "#6366f1" },
-
+ 
   wrap: { width: "100%", maxWidth: CARD_MAX_WIDTH },
   card: {
     borderRadius: 28,
@@ -316,7 +329,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 32,
   },
-
+ 
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -333,7 +346,7 @@ const styles = StyleSheet.create({
   },
   backArrow: { color: "#fff", fontSize: 16 },
   stepLabel: { color: "rgba(255,255,255,0.55)", fontSize: 12, fontWeight: "500" },
-
+ 
   progressRow: { flexDirection: "row", gap: 6, marginBottom: 22 },
   progressSegment: {
     flex: 1,
@@ -342,10 +355,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
   },
   progressFilled: { backgroundColor: "#a78bfa" },
-
+ 
   heading: { color: "#fff", fontSize: 26, fontWeight: "700", marginBottom: 8 },
   subheading: { color: "rgba(255,255,255,0.75)", fontSize: 14, lineHeight: 20, marginBottom: 24 },
-
+ 
   field: { marginBottom: 14 },
   label: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "500", marginBottom: 6 },
   input: {
@@ -376,14 +389,15 @@ const styles = StyleSheet.create({
   inputPassword: { paddingRight: 48 },
   toggle: { position: "absolute", right: 14 },
   toggleText: { color: "rgba(255,255,255,0.55)", fontSize: 12 },
-
+ 
   submit: { marginTop: 8, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   submitDisabled: { opacity: 0.7 },
   submitText: { color: "#fff", fontSize: 14, fontWeight: "600" },
   submitTextDisabled: { color: "rgba(255,255,255,0.5)" },
   pressed: { opacity: 0.85 },
-
+ 
   footer: { marginTop: 24, flexDirection: "row", justifyContent: "center", flexWrap: "wrap" },
   footerText: { color: "rgba(255,255,255,0.65)", fontSize: 14 },
   footerLink: { color: "#d8b4fe", fontSize: 14, fontWeight: "500" },
 });
+ 

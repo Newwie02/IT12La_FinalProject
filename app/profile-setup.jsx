@@ -11,6 +11,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import { updateMyProfile } from "../api";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -132,12 +133,28 @@ export default function ProfileSetup() {
     instruments.length > 0 &&
     genres.length > 0;
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (!canFinish) {
       Alert.alert(
         "Almost there",
         "Fill in your bio, gender, birthday, experience level, barangay, at least one instrument, and at least one genre."
       );
+      return;
+    }
+    try {
+      await updateMyProfile({
+        stageName,
+        experience,
+        barangay,
+        instruments: instruments.join(","),
+        genres: genres.join(","),
+        bio: bio.trim(),
+        gender,
+        birthday: birthday ? birthday.toISOString() : null,
+        photoUrl: photoUri ?? "",
+      });
+    } catch (err) {
+      Alert.alert("Couldn't save profile", err.message || "Please try again.");
       return;
     }
     router.replace({
@@ -241,38 +258,38 @@ export default function ProfileSetup() {
             </View>
 
             {/* Birthday — date picker */}
-<View style={styles.field}>
-  <Text style={styles.label}>Birthday</Text>
-  {Platform.OS === "web" ? (
-    <input
-      type="date"
-      max={new Date().toISOString().split("T")[0]}
-      value={birthday ? birthday.toISOString().split("T")[0] : ""}
-      onChange={(e) => {
-        if (e.target.value) setBirthday(new Date(e.target.value));
-      }}
-      style={webDateInputStyle}
-    />
-  ) : (
-    <>
-      <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
-        <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
-          {formatDate(birthday) ?? "Select birthday"}
-        </Text>
-        <Text style={styles.chevron}>📅</Text>
-      </Pressable>
-      {showDatePicker ? (
-        <DateTimePicker
-          value={birthday ?? new Date(2000, 0, 1)}
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          maximumDate={new Date()}
-          onChange={onChangeDate}
-        />
-      ) : null}
-    </>
-  )}
-</View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Birthday</Text>
+              {Platform.OS === "web" ? (
+                <input
+                  type="date"
+                  max={new Date().toISOString().split("T")[0]}
+                  value={birthday ? birthday.toISOString().split("T")[0] : ""}
+                  onChange={(e) => {
+                    if (e.target.value) setBirthday(new Date(e.target.value));
+                  }}
+                  style={webDateInputStyle}
+                />
+              ) : (
+                <>
+                  <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
+                    <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
+                      {formatDate(birthday) ?? "Select birthday"}
+                    </Text>
+                    <Text style={styles.chevron}>📅</Text>
+                  </Pressable>
+                  {showDatePicker ? (
+                    <DateTimePicker
+                      value={birthday ?? new Date(2000, 0, 1)}
+                      mode="date"
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      maximumDate={new Date()}
+                      onChange={onChangeDate}
+                    />
+                  ) : null}
+                </>
+              )}
+            </View>
 
             {/* Experience level — dropdown */}
             <View style={styles.field}>

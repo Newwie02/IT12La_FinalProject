@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -7,15 +8,14 @@ import {
   ScrollView,
   Image,
   Alert,
+  Modal,
 } from "react-native";
 import { getMusicians, getMyBand } from "../api";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
-
-// GigMatch — Musician dashboard (home)
+import Avatar from "../components/Avatar";
 // Route: app/dashboard-musician.jsx  →  "/dashboard-musician"
 // This screen always represents the MUSICIAN view. If the user has a real
 // band (bandName param present), tapping the avatar navigates to the real
@@ -63,6 +63,9 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
   const headerLabel = `Musician — ${musicianName}`;
+    const [allMusiciansOpen, setAllMusiciansOpen] = useState(false);
+  const visibleMusicians = musicians.slice(0, 3);
+
 
   const statusItems = [
     { key: "active", label: "Active status", value: "Online" },
@@ -136,7 +139,7 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
         <BlurView intensity={50} tint="light" style={styles.headerCard}>
           <View style={styles.headerRow}>
             <Pressable onPress={goToBandDashboard} style={styles.avatarWrap}>
-              <View style={styles.avatar}>
+              <View style={person.photoUrl}>
                 <Ionicons name="person" size={20} color="#7c3aed" />
               </View>
             </Pressable>
@@ -240,20 +243,23 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
           ))}
         </ScrollView>
 
-        <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Fellow musician</Text>
-          <Pressable>
-            <Text style={styles.seeAll}>See all</Text>
-          </Pressable>
+          {musicians.length > 3 ? (
+            <Pressable onPress={() => setAllMusiciansOpen(true)}>
+              <Text style={styles.seeAll}>See all</Text>
+            </Pressable>
+          ) : null}
         </View>
+
         {loadingMusicians ? (
           <Text style={styles.emptyText}>Loading musicians...</Text>
         ) : musicians.length === 0 ? (
           <Text style={styles.emptyText}>No other musicians yet.</Text>
         ) : (
-          musicians.map((person) => (
+                  visibleMusicians.map((person) => (
             <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
-              <View style={styles.personAvatar} />
+             <Avatar uri={person.photoUrl} />
               <View style={styles.personText}>
                 <Text style={styles.personName}>{person.name}</Text>
                 <Text style={styles.personMeta}>{person.role}</Text>
@@ -300,7 +306,42 @@ const bandPhotoUri = band?.photoUrl ?? params.bandPhotoUri;
           );
         })}
       </BlurView>
-      <SwitchLoadingOverlay visible={isSwitching} label="Switching to Band dashboard..." />
+           <Modal
+        visible={allMusiciansOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setAllMusiciansOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setAllMusiciansOpen(false)} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>All musicians ({musicians.length})</Text>
+            <Pressable onPress={() => setAllMusiciansOpen(false)} hitSlop={10}>
+              <Text style={styles.modalClose}>✕</Text>
+            </Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {musicians.map((person) => (
+              <View key={person.id} style={styles.modalPersonRow}>
+                <Avatar uri={person.photoUrl} />
+                <View style={styles.personText}>
+                  <Text style={styles.personName}>{person.name}</Text>
+                  <Text style={styles.personMeta}>{person.role}</Text>
+                </View>
+                <Pressable
+                  style={styles.viewProfileButton}
+                  onPress={() => {
+                    setAllMusiciansOpen(false);
+                    openMusicianProfile(person);
+                  }}
+                >
+                  <Text style={styles.viewProfileText}>View Profile</Text>
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -490,4 +531,35 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: "center", gap: 3 },
   navLabel: { color: "#9ca3af", fontSize: 10, fontWeight: "600" },
   navLabelActive: { color: PURPLE },
+
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
+  modalSheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: "75%",
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  modalTitle: { color: "#111827", fontSize: 15, fontWeight: "700" },
+  modalClose: { color: "#6b7280", fontSize: 16 },
+  modalPersonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
 });
