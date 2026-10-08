@@ -1,13 +1,20 @@
+import { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
+import { getMe } from "../api";
 
 // Shared bottom navigation bar — used by dashboard-musician, discover,
 // messages, and profile-musician so the active tab always reflects the
 // actual current route (via usePathname), not local component state.
 // Lives at /components/BottomNav.jsx (sibling of app/, NOT inside app/ —
 // putting it inside app/ would make Expo Router treat it as a route).
+//
+// Home / Profile destinations come from the REAL role on the server: screens
+// used to hardcode musician routes, so a client tapping Home from Discover or
+// Messages landed on the musician dashboard and the account "looked" switched
+// to musician.
 
 const NAV_ITEMS = [
   { key: "home", label: "Home", icon: "home" },
@@ -26,15 +33,37 @@ export default function BottomNav({
   const router = useRouter();
   const pathname = usePathname();
 
+  // null = still loading the role; "" = unknown (server unreachable)
+  const [role, setRole] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getMe()
+      .then((me) => active && setRole(me?.role ?? ""))
+      .catch(() => active && setRole(""));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const isClientRole = role === "client" || role === "organizer";
+
   const routes = {
-    home: homeRoute,
+    home: isClientRole ? "/dashboard-client" : homeRoute,
     discover: "/discover",
     gigs: "/gig-posting",
     messages: "/messages",
-    profile: profileRoute,
+    profile: isClientRole ? "/profile-client" : profileRoute,
   };
 
   const items = showGigs ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== "gigs");
+
+  const handlePress = (item) => {
+    // Hold Home/Profile until the real role is known, so a client can never
+    // jump to a musician screen during the first fetch.
+    if ((item.key === "home" || item.key === "profile") && role === null) return;
+    router.push({ pathname: routes[item.key], params });
+  };
 
   return (
     <BlurView intensity={60} tint="light" style={styles.bottomNav}>
@@ -43,7 +72,7 @@ export default function BottomNav({
         return (
           <Pressable
             key={item.key}
-            onPress={() => router.push({ pathname: routes[item.key], params })}
+            onPress={() => handlePress(item)}
             style={styles.navItem}
           >
             <Ionicons

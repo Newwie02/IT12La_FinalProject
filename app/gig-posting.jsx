@@ -15,20 +15,34 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomNav from "../components/BottomNav";
 import { useAppAlert } from "../components/useAppAlert";
+import { createGig } from "../api";
 
-// GigMatch — Gig Posting (create a listing), no backend yet
+// GigMatch — Gig Posting (create a listing) — saves to POST /api/gigs
 // Route: app/gig-posting.jsx  →  "/gig-posting"
 //
-// Band-side posting: a band advertising itself as available for an event.
-// A client-side "looking for a band" version would live off
-// dashboard-client.jsx — not built yet, that dashboard isn't wired to
-// this nav.
+// Used by clients ("looking for musicians") and by bands/musicians
+// (advertising availability). The form's extra details (duration, genres,
+// included, requirements, fee terms) are packed into the gig description,
+// since the gigs table only stores title/description/location/date/pay.
 
 const GIG_TYPES = [
   "Birthday", "Wedding", "Concert", "Festival",
   "Corporate Event", "School Event", "Private Event", "Bar / Restaurant",
+];
+
+// Client "Post a gig" event types (client form only)
+const CLIENT_EVENT_TYPES = [
+  "Birthday", "Wedding", "Debut", "Fiesta", "Company Event",
+  "Concert", "Corporate Event", "School Event", "Private Event", "Bar / Restaurant",
+];
+
+// Client form: "Performance duration / number of sets"
+const SET_DURATION_OPTIONS = [
+  "1 set", "2 sets", "3 sets", "4+ sets",
+  "1 hour", "2 hours", "3 hours", "4+ hours",
 ];
 
 const GENRES = [
@@ -49,13 +63,21 @@ const BARANGAYS = [
 
 const DURATIONS = ["1 hour", "2 hours", "3 hours", "4 hours", "5+ hours"];
 
+// What the band / musician brings to the gig ("Band Includes")
 const INCLUDED_OPTIONS = [
-  "Live performance", "3 sets", "Song requests", "Basic sound equipment",
+  "Live Performance", "3 Sets", "2 Sets", "Song Requests",
+  "Cover Songs", "Original Songs", "Basic Sound Equipment",
+  "Microphones", "Amplifiers", "Sound Check", "Custom Setlist",
+  "Background Music", "Audience Interaction", "MC / Hosting",
 ];
 
+// What the band / musician needs from the client
 const CLIENT_REQUIREMENT_OPTIONS = [
-  "Stage required", "Sound system provided by client",
-  "Transportation arrangement", "Electrical requirements",
+  "Stage / Performance Area", "Stable Electricity", "Power Outlets",
+  "Sound System (if not provided by band)", "Microphones (if not included)",
+  "Chairs for Band Members", "Drinking Water", "Meals / Snacks",
+  "Parking Space", "Sound Check Time", "Setup Time", "Transportation",
+  "Accommodation (for out-of-town gigs)",
 ];
 
 const DESCRIPTION_MAX = 255;
@@ -73,12 +95,22 @@ function formatPeso(rawDigits) {
   return `₱${Number(rawDigits).toLocaleString("en-PH")}`;
 }
 
+// Renders a Date's time of day as "6:00 PM".
+function formatTime(d) {
+  if (!d) return "";
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 export default function GigPosting() {
   const router = useRouter();
-  const { fullName, instruments, genres, bandName, bandPhotoUri } = useLocalSearchParams();
+  const { fullName, instruments, genres, bandName, bandPhotoUri, role } = useLocalSearchParams();
+  const isClient = role === "client" || role === "organizer";
+  const homePath = isClient ? "/dashboard-client" : bandName ? "/dashboard-band" : "/dashboard-musician";
   const { showAlert, AlertModal } = useAppAlert();
 
   const [gigType, setGigType] = useState(null);
+  const [eventDate, setEventDate] = useState(null); // JS Date chosen in the picker
+  const [dateOpen, setDateOpen] = useState(false);
   const [barangay, setBarangay] = useState(null);
   const [duration, setDuration] = useState(null);
   const [genreTags, setGenreTags] = useState([]);
@@ -88,6 +120,19 @@ export default function GigPosting() {
   const [included, setIncluded] = useState([]);
   const [clientRequirements, setClientRequirements] = useState([]);
   const [portfolioPhotos, setPortfolioPhotos] = useState([]);
+  const [posting, setPosting] = useState(false);
+
+  // --- Client form only -------------------------------------------------
+  const [startTime, setStartTime] = useState(null); // JS Date (time of day)
+  const [endTime, setEndTime] = useState(null);
+  const [venue, setVenue] = useState("");
+  const [soundSystem, setSoundSystem] = useState(null);         // Provided | Not Provided
+  const [songRequests, setSongRequests] = useState(null);       // Yes | No
+  const [meals, setMeals] = useState(null);                     // Provided | Not Provided
+  const [transportation, setTransportation] = useState(null);   // Provided | Not Provided
+  const [stage, setStage] = useState(null);                     // Available | Not Available
+  const [dressCode, setDressCode] = useState("");
+  const [specialRequests, setSpecialRequests] = useState("");
 
   // Only start showing field errors after the user has tried to post once,
   // so the form isn't red before they've touched anything.
@@ -136,23 +181,45 @@ export default function GigPosting() {
     setPortfolioPhotos((prev) => prev.filter((p) => p !== uri));
   };
 
-  const errors = {
-    gigType: gigType === null ? "Select a gig type." : null,
-    barangay: barangay === null ? "Select a location." : null,
-    duration: duration === null ? "Select a performance duration." : null,
-    genreTags: genreTags.length === 0 ? "Add at least one genre tag." : null,
-    description:
-      description.trim().length === 0 ? "Description is required." : null,
-    startingFee:
-      startingFee.length === 0
-        ? "Starting fee is required."
-        : Number(startingFee) <= 0
-        ? "Starting fee must be greater than ₱0."
-        : null,
-  };
+  const errors = isClient
+    ? {
+        gigType: gigType === null ? "Select an event type." : null,
+        eventDate: eventDate === null ? "Select an event date." : null,
+        startTime: startTime === null ? "Select a start time." : null,
+        venue: venue.trim().length === 0 ? "Venue / location is required." : null,
+        duration: duration === null ? "Select a duration or number of sets." : null,
+        genreTags: genreTags.length === 0 ? "Add at least one genre." : null,
+        description: description.trim().length === 0 ? "Description is required." : null,
+        startingFee:
+          startingFee.length === 0
+            ? "Budget is required."
+            : Number(startingFee) <= 0
+            ? "Budget must be greater than ₱0."
+            : null,
+        soundSystem: soundSystem === null ? "Select Provided or Not Provided." : null,
+        songRequests: songRequests === null ? "Select Yes or No." : null,
+        meals: meals === null ? "Select Provided or Not Provided." : null,
+        transportation: transportation === null ? "Select Provided or Not Provided." : null,
+        stage: stage === null ? "Select Available or Not Available." : null,
+      }
+    : {
+        gigType: gigType === null ? "Select a gig type." : null,
+        eventDate: eventDate === null ? "Select an event date." : null,
+        barangay: barangay === null ? "Select a location." : null,
+        duration: duration === null ? "Select a performance duration." : null,
+        genreTags: genreTags.length === 0 ? "Add at least one genre tag." : null,
+        description:
+          description.trim().length === 0 ? "Description is required." : null,
+        startingFee:
+          startingFee.length === 0
+            ? "Starting fee is required."
+            : Number(startingFee) <= 0
+            ? "Starting fee must be greater than ₱0."
+            : null,
+      };
   const canPost = Object.values(errors).every((e) => e === null);
 
-  const handlePost = () => {
+  const handlePost = async () => {
     setSubmitted(true);
     if (!canPost) {
       showAlert({
@@ -163,22 +230,82 @@ export default function GigPosting() {
       });
       return;
     }
-    showAlert({
-      icon: "checkmark-circle",
-      tone: "success",
-      title: "Gig posted",
-      message: "This is a placeholder — no backend yet, so it won't actually appear for clients until that's wired up.",
-      buttons: [
-        {
-          label: "Back to dashboard",
-          onPress: () =>
-            router.replace({
-              pathname: bandName ? "/dashboard-band" : "/dashboard-musician",
-              params: { fullName, instruments, genres, bandName, bandPhotoUri },
-            }),
-        },
-      ],
-    });
+    if (posting) return;
+    setPosting(true);
+    try {
+      // The gigs table stores title/description/location/date/pay, so the
+      // form's extra details ride along inside the description.
+      // The client form's start time is folded into the gig's datetime.
+      let gigDate = eventDate ? new Date(eventDate) : null;
+      if (gigDate && startTime) {
+        gigDate.setHours(startTime.getHours(), startTime.getMinutes(), 0, 0);
+      }
+
+      let gigDescription;
+      if (isClient) {
+        const clientLines = [
+          startTime
+            ? `Time: ${formatTime(startTime)}${endTime ? ` – ${formatTime(endTime)}` : ""}`
+            : null,
+          duration ? `Duration / sets: ${duration}` : null,
+          genreTags.length ? `Genres: ${genreTags.join(", ")}` : null,
+          `Budget: ${formatPeso(startingFee)} ${negotiable ? "(negotiable)" : "(fixed)"}`,
+          soundSystem ? `Sound system: ${soundSystem}` : null,
+          songRequests ? `Song requests: ${songRequests}` : null,
+          meals ? `Meals / food: ${meals}` : null,
+          transportation ? `Transportation: ${transportation}` : null,
+          stage ? `Stage / performance area: ${stage}` : null,
+          dressCode.trim() ? `Dress code: ${dressCode.trim()}` : null,
+          specialRequests.trim() ? `Special requests: ${specialRequests.trim()}` : null,
+        ].filter(Boolean);
+        gigDescription = `${description.trim()}\n\n${clientLines.join("\n")}`;
+      } else {
+        const bandLines = [
+          `Duration: ${duration}`,
+          genreTags.length ? `Genres: ${genreTags.join(", ")}` : null,
+          included.length ? `Band includes: ${included.join(", ")}` : null,
+          clientRequirements.length
+            ? `Client requirements: ${clientRequirements.join(", ")}`
+            : null,
+          `Fee: ${formatPeso(startingFee)} ${negotiable ? "(negotiable)" : "(fixed)"}`,
+        ].filter(Boolean);
+        gigDescription = `${description.trim()}\n\n${bandLines.join("\n")}`;
+      }
+
+      await createGig({
+        title: gigType,
+        description: gigDescription,
+        location: isClient ? venue.trim() : barangay,
+        date: gigDate ? gigDate.toISOString() : null,
+        pay: startingFee, // raw digits, e.g. "5000"
+      });
+
+      showAlert({
+        icon: "checkmark-circle",
+        tone: "success",
+        title: "Gig posted",
+        message: "Musicians and bands can now find your gig and apply.",
+        buttons: [
+          {
+            label: "Back to dashboard",
+            onPress: () =>
+              router.replace({
+                pathname: homePath,
+                params: { fullName, instruments, genres, bandName, bandPhotoUri, role },
+              }),
+          },
+        ],
+      });
+    } catch (e) {
+      showAlert({
+        icon: "alert-circle",
+        tone: "warning",
+        title: "Couldn't post your gig",
+        message: e.message || "Something went wrong. Please try again.",
+      });
+    } finally {
+      setPosting(false);
+    }
   };
 
   return (
@@ -189,17 +316,17 @@ export default function GigPosting() {
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Post a gig</Text>
         <Text style={styles.subtitle}>
-          Let clients know {bandName ? bandName : "you're"} available for an event.
+          {isClient ? "Tell bands and musicians about your event." : `Let clients know ${bandName ? bandName : "you're"} available for an event.`}
         </Text>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Gig type</Text>
+          <Text style={styles.label}>{isClient ? "Event Type" : "Gig type"}</Text>
           <Pressable
             onPress={() => setGigTypeModalOpen(true)}
             style={[styles.dropdownField, submitted && errors.gigType && styles.fieldError]}
           >
             <Text style={gigType ? styles.dropdownValue : styles.dropdownPlaceholder}>
-              {gigType ?? "Select gig type"}
+              {gigType ?? (isClient ? "Select event type" : "Select gig type")}
             </Text>
             <Text style={styles.chevron}>⌄</Text>
           </Pressable>
@@ -209,29 +336,110 @@ export default function GigPosting() {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Location</Text>
+          <Text style={styles.label}>Event date</Text>
           <Pressable
-            onPress={() => setBarangayModalOpen(true)}
-            style={[styles.dropdownField, submitted && errors.barangay && styles.fieldError]}
+            onPress={() => setDateOpen((v) => !v)}
+            style={[styles.dropdownField, submitted && errors.eventDate && styles.fieldError]}
           >
-            <Text style={barangay ? styles.dropdownValue : styles.dropdownPlaceholder}>
-              {barangay ?? "Select barangay"}
+            <Text style={eventDate ? styles.dropdownValue : styles.dropdownPlaceholder}>
+              {eventDate
+                ? eventDate.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : "Select date"}
             </Text>
-            <Text style={styles.chevron}>⌄</Text>
+            <Ionicons name="calendar-outline" size={16} color="#6b7280" />
           </Pressable>
-          {submitted && errors.barangay ? (
-            <Text style={styles.errorText}>{errors.barangay}</Text>
+          {dateOpen ? (
+            <View style={styles.datePickerWrap}>
+              <DateTimePicker
+                value={eventDate ?? new Date()}
+                mode="date"
+                display="spinner"
+                minimumDate={new Date()}
+                onChange={(_, selected) => {
+                  if (selected) setEventDate(selected);
+                }}
+                style={styles.datePicker}
+              />
+              <Pressable onPress={() => setDateOpen(false)} style={styles.dateDoneButton}>
+                <Text style={styles.dateDoneText}>Done</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {submitted && errors.eventDate ? (
+            <Text style={styles.errorText}>{errors.eventDate}</Text>
           ) : null}
         </View>
 
+        {/* Client: start + end time */}
+        {isClient ? (
+          <View style={styles.timeRow}>
+            <TimeField
+              label="Start time"
+              value={startTime}
+              onChange={setStartTime}
+              submitted={submitted}
+              error={errors.startTime}
+              style={styles.timeHalf}
+            />
+            <TimeField
+              label="End time"
+              value={endTime}
+              onChange={setEndTime}
+              submitted={submitted}
+              error={null}
+              style={styles.timeHalf}
+            />
+          </View>
+        ) : null}
+
+        {isClient ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Venue / Location</Text>
+            <TextInput
+              value={venue}
+              onChangeText={setVenue}
+              placeholder="e.g. Christ the King Hall, Cuambogan"
+              placeholderTextColor="#9ca3af"
+              maxLength={120}
+              style={[styles.input, styles.inputTight, submitted && errors.venue && styles.fieldError]}
+            />
+            {submitted && errors.venue ? (
+              <Text style={styles.errorText}>{errors.venue}</Text>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.field}>
+            <Text style={styles.label}>Location</Text>
+            <Pressable
+              onPress={() => setBarangayModalOpen(true)}
+              style={[styles.dropdownField, submitted && errors.barangay && styles.fieldError]}
+            >
+              <Text style={barangay ? styles.dropdownValue : styles.dropdownPlaceholder}>
+                {barangay ?? "Select barangay"}
+              </Text>
+              <Text style={styles.chevron}>⌄</Text>
+            </Pressable>
+            {submitted && errors.barangay ? (
+              <Text style={styles.errorText}>{errors.barangay}</Text>
+            ) : null}
+          </View>
+        )}
+
         <View style={styles.field}>
-          <Text style={styles.label}>Performance duration</Text>
+          <Text style={styles.label}>
+            {isClient ? "Performance duration / number of sets" : "Performance duration"}
+          </Text>
           <Pressable
             onPress={() => setDurationModalOpen(true)}
             style={[styles.dropdownField, submitted && errors.duration && styles.fieldError]}
           >
             <Text style={duration ? styles.dropdownValue : styles.dropdownPlaceholder}>
-              {duration ?? "Select duration"}
+              {duration ?? (isClient ? "Select duration / sets" : "Select duration")}
             </Text>
             <Text style={styles.chevron}>⌄</Text>
           </Pressable>
@@ -241,7 +449,7 @@ export default function GigPosting() {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Genre tags</Text>
+          <Text style={styles.label}>{isClient ? "Music genre" : "Genre tags"}</Text>
           <View style={styles.chipRow}>
             {genreTags.map((tag) => (
               <Pressable key={tag} onPress={() => toggleGenreTag(tag)} style={styles.chipSelected}>
@@ -257,27 +465,18 @@ export default function GigPosting() {
           ) : null}
         </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Description</Text>
-          <TextInput
-            value={description}
-            onChangeText={(v) => setDescription(v.slice(0, DESCRIPTION_MAX))}
-            placeholder="What kind of event, what you'll bring..."
-            placeholderTextColor="#9ca3af"
-            multiline
-            maxLength={DESCRIPTION_MAX}
-            style={[styles.textarea, submitted && errors.description && styles.fieldError]}
+        {!isClient ? (
+          <DescriptionField
+            label="Description"
+            description={description}
+            onChange={setDescription}
+            submitted={submitted}
+            error={errors.description}
           />
-          <Text style={styles.charCount}>
-            {description.length}/{DESCRIPTION_MAX}
-          </Text>
-          {submitted && errors.description ? (
-            <Text style={styles.errorText}>{errors.description}</Text>
-          ) : null}
-        </View>
+        ) : null}
 
         <View style={styles.field}>
-          <Text style={styles.label}>Starting fee</Text>
+          <Text style={styles.label}>{isClient ? "Budget / talent fee" : "Starting fee"}</Text>
           <TextInput
             value={formatPeso(startingFee)}
             onChangeText={handleStartingFeeChange}
@@ -305,8 +504,10 @@ export default function GigPosting() {
           </View>
         </View>
 
+        {!isClient ? (
+          <>
         <View style={styles.field}>
-          <Text style={styles.label}>Included</Text>
+          <Text style={styles.label}>Band Includes</Text>
           <View style={styles.chipRow}>
             {INCLUDED_OPTIONS.map((item) => {
               const isSelected = included.includes(item);
@@ -361,16 +562,94 @@ export default function GigPosting() {
             </Pressable>
           </View>
         </View>
+          </>
+        ) : (
+          <>
+            <ChoiceField
+              label="Sound system"
+              value={soundSystem}
+              options={["Provided", "Not Provided"]}
+              onChange={setSoundSystem}
+              submitted={submitted}
+              error={errors.soundSystem}
+            />
+            <ChoiceField
+              label="Song requests"
+              value={songRequests}
+              options={["Yes", "No"]}
+              onChange={setSongRequests}
+              submitted={submitted}
+              error={errors.songRequests}
+            />
+            <ChoiceField
+              label="Meals / Food"
+              value={meals}
+              options={["Provided", "Not Provided"]}
+              onChange={setMeals}
+              submitted={submitted}
+              error={errors.meals}
+            />
+            <ChoiceField
+              label="Transportation"
+              value={transportation}
+              options={["Provided", "Not Provided"]}
+              onChange={setTransportation}
+              submitted={submitted}
+              error={errors.transportation}
+            />
+            <ChoiceField
+              label="Stage / Performance Area"
+              value={stage}
+              options={["Available", "Not Available"]}
+              onChange={setStage}
+              submitted={submitted}
+              error={errors.stage}
+            />
 
-        <Pressable onPress={handlePost} style={({ pressed }) => [pressed && canPost && styles.pressed]}>
+            <View style={styles.field}>
+              <Text style={styles.label}>Dress code (if required)</Text>
+              <TextInput
+                value={dressCode}
+                onChangeText={setDressCode}
+                placeholder="e.g. Formal attire"
+                placeholderTextColor="#9ca3af"
+                maxLength={80}
+                style={[styles.input, styles.inputTight]}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Special requirements / requests</Text>
+              <TextInput
+                value={specialRequests}
+                onChangeText={(v) => setSpecialRequests(v.slice(0, 200))}
+                placeholder="Anything else the band should know..."
+                placeholderTextColor="#9ca3af"
+                multiline
+                maxLength={200}
+                style={[styles.textarea, { minHeight: 70 }]}
+              />
+            </View>
+
+            <DescriptionField
+              label="Event Description"
+              description={description}
+              onChange={setDescription}
+              submitted={submitted}
+              error={errors.description}
+            />
+          </>
+        )}
+
+        <Pressable onPress={handlePost} style={({ pressed }) => [pressed && canPost && !posting && styles.pressed]}>
           <LinearGradient
-            colors={canPost ? ["#8b5cf6", "#d946ef"] : ["#e5e0f5", "#e5e0f5"]}
+            colors={canPost && !posting ? ["#8b5cf6", "#d946ef"] : ["#e5e0f5", "#e5e0f5"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.postButton}
           >
-            <Text style={[styles.postButtonText, !canPost && styles.postButtonTextDisabled]}>
-              Post gig
+            <Text style={[styles.postButtonText, (!canPost || posting) && styles.postButtonTextDisabled]}>
+              {posting ? "Posting…" : "Post gig"}
             </Text>
           </LinearGradient>
         </Pressable>
@@ -378,16 +657,16 @@ export default function GigPosting() {
         <View style={{ height: 100 }} />
       </ScrollView>
         <BottomNav
-          homeRoute={bandName ? "/dashboard-band" : "/dashboard-musician"}
+          homeRoute={homePath}
           profileRoute="/profile-musician"
-          params={{ fullName, instruments, genres, bandName, bandPhotoUri }}
+          params={{ fullName, instruments, genres, bandName, bandPhotoUri, role }}
           showGigs={!!bandName}
         />
 
       <SelectModal
         visible={gigTypeModalOpen}
-        title="Gig type"
-        options={GIG_TYPES}
+        title={isClient ? "Event type" : "Gig type"}
+        options={isClient ? CLIENT_EVENT_TYPES : GIG_TYPES}
         selected={gigType ? [gigType] : []}
         onSelect={(item) => { setGigType(item); setGigTypeModalOpen(false); }}
         onClose={() => setGigTypeModalOpen(false)}
@@ -402,8 +681,8 @@ export default function GigPosting() {
       />
       <SelectModal
         visible={durationModalOpen}
-        title="Performance duration"
-        options={DURATIONS}
+        title={isClient ? "Performance duration / number of sets" : "Performance duration"}
+        options={isClient ? SET_DURATION_OPTIONS : DURATIONS}
         selected={duration ? [duration] : []}
         onSelect={(item) => { setDuration(item); setDurationModalOpen(false); }}
         onClose={() => setDurationModalOpen(false)}
@@ -457,6 +736,88 @@ function SelectModal({ visible, title, options, selected, multiple, onSelect, on
   );
 }
 
+// Labelled description textarea (rendered once per role — the client form
+// places it last, the band form puts it after the genres)
+function DescriptionField({ label, description, onChange, submitted, error }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        value={description}
+        onChangeText={(v) => onChange(v.slice(0, DESCRIPTION_MAX))}
+        placeholder="What kind of event, what you'll bring..."
+        placeholderTextColor="#9ca3af"
+        multiline
+        maxLength={DESCRIPTION_MAX}
+        style={[styles.textarea, submitted && error && styles.fieldError]}
+      />
+      <Text style={styles.charCount}>
+        {description.length}/{DESCRIPTION_MAX}
+      </Text>
+      {submitted && error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+}
+
+// Client form: start / end time — press to open an inline spinner + Done
+function TimeField({ label, value, onChange, submitted, error, style }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={[styles.field, style]}>
+      <Text style={styles.label}>{label}</Text>
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        style={[styles.dropdownField, submitted && error && styles.fieldError]}
+      >
+        <Text style={value ? styles.dropdownValue : styles.dropdownPlaceholder}>
+          {value ? formatTime(value) : "Select time"}
+        </Text>
+        <Ionicons name="time-outline" size={16} color="#6b7280" />
+      </Pressable>
+      {open ? (
+        <View style={styles.datePickerWrap}>
+          <DateTimePicker
+            value={value ?? new Date()}
+            mode="time"
+            display="spinner"
+            onChange={(_, picked) => {
+              if (picked) onChange(picked);
+            }}
+            style={styles.datePicker}
+          />
+          <Pressable onPress={() => setOpen(false)} style={styles.dateDoneButton}>
+            <Text style={styles.dateDoneText}>Done</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {submitted && error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+}
+
+// Client form: two-option rows (Provided / Not Provided, Yes / No, ...)
+function ChoiceField({ label, value, options, onChange, submitted, error }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.toggleRow}>
+        {options.map((opt) => (
+          <Pressable
+            key={opt}
+            onPress={() => onChange(value === opt ? null : opt)}
+            style={[styles.toggleOption, value === opt && styles.toggleOptionActive]}
+          >
+            <Text style={[styles.toggleOptionText, value === opt && styles.toggleOptionTextActive]}>
+              {opt}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {submitted && error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+}
+
 const PURPLE = "#7c3aed";
 
 const styles = StyleSheet.create({
@@ -492,6 +853,22 @@ const styles = StyleSheet.create({
   dropdownValue: { color: "#111827", fontSize: 14 },
   dropdownPlaceholder: { color: "#9ca3af", fontSize: 14 },
   chevron: { color: "#6b7280", fontSize: 16 },
+
+  timeRow: { flexDirection: "row", gap: 10 },
+  timeHalf: { flex: 1 },
+  inputTight: { marginBottom: 0 },
+
+  datePickerWrap: {
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.1)", backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 12, marginTop: 8, overflow: "hidden",
+  },
+  datePicker: { width: "100%" },
+  dateDoneButton: {
+    alignSelf: "flex-end", marginRight: 12, marginBottom: 12,
+    backgroundColor: "rgba(124,58,237,0.1)", borderRadius: 999,
+    paddingHorizontal: 16, paddingVertical: 8,
+  },
+  dateDoneText: { color: PURPLE, fontSize: 12, fontWeight: "700" },
 
   toggleRow: { flexDirection: "row", gap: 10 },
   toggleOption: {

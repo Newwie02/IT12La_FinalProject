@@ -13,12 +13,14 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
+import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import {
   getMusicians,
   getMyBand,
   getBands,
   getMyApplications,
   getReceivedApplications,
+  getNotifications,
   resolveUrl,
 } from "../api";
 
@@ -61,6 +63,8 @@ export default function DashboardMusician() {
   const [loadingBands, setLoadingBands] = useState(true);
   const [applicationStatus, setApplicationStatus] = useState({}); // { [bandId]: "pending" | "accepted" | "rejected" }
   const [pendingCount, setPendingCount] = useState(0); // applications waiting for MY band
+  const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell)
+  const [isSwitching, setIsSwitching] = useState(false); // overlay while switching to the band dashboard
 
   // Re-check every time this screen comes into view (e.g. after creating a band)
   useFocusEffect(
@@ -90,10 +94,12 @@ export default function DashboardMusician() {
         getBands(),
         getMyApplications().catch(() => []),
         getReceivedApplications().catch(() => []),
+        getNotifications().catch(() => []),
       ])
-        .then(([allBands, mine, received]) => {
+        .then(([allBands, mine, received, notifications]) => {
           if (!active) return;
           setBands(allBands);
+          setUnreadCount(notifications.filter((n) => !n.isRead).length);
           const map = {};
           mine.forEach((a) => {
             map[a.bandId] = a.status;
@@ -139,7 +145,8 @@ export default function DashboardMusician() {
   const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
-  const hasBand = !!myBand;
+   const hasBand = !!myBand;
+  const inAnyBand = hasBand || Object.values(applicationStatus).includes("accepted");
   // One band per musician: accepted into someone else's band counts too
   const isMember = Object.values(applicationStatus).includes("accepted");
   const memberBand = bands.find((b) => applicationStatus[b.id] === "accepted");
@@ -155,25 +162,32 @@ export default function DashboardMusician() {
 
   // Avatar tap: only accounts with a band can switch to the band dashboard
   const handleSwitchDashboard = () => {
-    if (!bandChecked) return;
-    if (!myBand) {
+        if (!bandChecked) return;
+    const bandToOpen = myBand || memberBand;
+    if (!bandToOpen) {
       Alert.alert(
         "No band yet",
         "Create a band first to unlock the band dashboard."
       );
       return;
     }
-    router.replace({
-      pathname: "/dashboard-band",
-      params: {
-        ...carryParams,
-        bandName: myBand.name ?? "",
-        bandPhotoUri: myBand.photoUrl ?? "",
-        bandDescription: myBand.bio ?? "",
-        bandLocation: myBand.location ?? "",
-        primaryGenres: myBand.genre ?? "",
-      },
-    });
+    if (isSwitching) return;
+    setIsSwitching(true);
+    setTimeout(() => {
+      router.replace({
+        pathname: "/dashboard-band",
+        params: {
+          ...carryParams,
+                 bandName: bandToOpen.name ?? "",
+          bandPhotoUri: bandToOpen.photoUrl ?? "",
+          bandDescription: bandToOpen.bio ?? "",
+          bandLocation: bandToOpen.location ?? "",
+          primaryGenres: bandToOpen.genre ?? "",
+          isLeader: myBand && myBand.isLeader !== false ? "true" : "false",
+        },
+      });
+      setIsSwitching(false);
+    }, 700);
   };
 
   // Params passed along so the next screen keeps your name / tags
@@ -232,15 +246,24 @@ export default function DashboardMusician() {
               <Text style={styles.headerTitle}>{headerLabel}</Text>
               <Text style={styles.headerSubtitle}>Good day, {displayName.split(" ")[0]}</Text>
             </View>
-            <Pressable style={styles.bellButton} hitSlop={8}>
+            <Pressable
+              style={styles.bellButton}
+              hitSlop={8}
+              onPress={() => router.push("/notifications")}
+            >
               <Ionicons name="notifications" size={20} color="#7c3aed" />
+              {unreadCount > 0 ? (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                </View>
+              ) : null}
             </Pressable>
           </View>
           <Text style={styles.identityHint}>
             {!bandChecked
               ? " "
-              : hasBand
-              ? `Tap your avatar to switch to ${myBand.name} (band dashboard)`
+                           : hasBand || isMember
+              ? `Tap your avatar to switch to ${(myBand || memberBand)?.name ?? "your band"} (band dashboard)`
               : "Create a band to unlock the band dashboard"}
           </Text>
         </BlurView>
@@ -326,8 +349,8 @@ export default function DashboardMusician() {
           </View>
         ) : null}
 
-        {/* Band leader: applications from musicians */}
-        {hasBand ? (
+              {/* Band leader: applications from musicians */}
+        {myBand?.isLeader ? (
           <Pressable
             onPress={() => router.push("/band-applications")}
             style={styles.applicationsCard}
@@ -350,7 +373,9 @@ export default function DashboardMusician() {
           </Pressable>
         ) : null}
 
-        {/* Recommended for you */}
+               {/* Recommended for you (hidden once the musician is in a band) */}
+        {!inAnyBand && (
+        <>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recommended for you</Text>
           <Pressable onPress={() => router.push({ pathname: "/discover", params: carryParams })}>
@@ -409,7 +434,9 @@ export default function DashboardMusician() {
                 </BlurView>
               );
             })}
-          </ScrollView>
+                    </ScrollView>
+        )}
+        </>
         )}
 
         {/* Fellow musician — REAL users from the database */}
@@ -477,6 +504,8 @@ export default function DashboardMusician() {
           );
         })}
       </BlurView>
+
+      <SwitchLoadingOverlay visible={isSwitching} label="Switching to Band dashboard..." />
     </View>
   );
 }
@@ -643,6 +672,20 @@ const styles = StyleSheet.create({
   applyStatusAccepted: { backgroundColor: "rgba(34,197,94,0.12)" },
   applyStatusText: { color: PURPLE, fontSize: 11, fontWeight: "700" },
   applyStatusAcceptedText: { color: "#16a34a" },
+
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#dc2626",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
 
   memberCard: {
     flexDirection: "row",

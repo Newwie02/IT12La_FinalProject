@@ -18,7 +18,8 @@ import { signup, saveToken } from "../api";
 // GigMatch — sign-up screen (Expo / React Native)
 // Route: app/sign-up.jsx  →  "/sign-up"
 // Flow: this is step 1 of 3. Step 2 is role-select.jsx ("/role-select"),
-// step 3 is profile-setup.jsx or profile-setup-organizer.jsx depending on role.
+// step 3 branches by role: /profile-setup-musician, /profile-setup-band,
+// or /profile-setup-organizer.
  
 export default function GigMatchSignUp() {
   const router = useRouter();

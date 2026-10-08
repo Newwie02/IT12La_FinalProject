@@ -18,28 +18,19 @@ import { BlurView } from "expo-blur";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
-// GigMatch — onboarding step 3: "Set up your profile" (Event Organizer / Client)
-// Route: app/profile-setup-organizer.jsx  →  "/profile-setup-organizer"
-// Flow: sign-up (step 1) → role-select (step 2, role = "organizer") → this screen (step 3, final).
+// GigMatch — onboarding step 3: "Set up your profile" (musician)
+// Route: app/profile-setup-musician.jsx  →  "/profile-setup-musician"
+// Flow: sign-up (step 1) → role-select (step 2, role = "musician") → this screen (step 3, final).
 // Requires:
-//   npx expo install expo-image-picker --legacy-peer-deps
-//   npx expo install @react-native-community/datetimepicker --legacy-peer-deps
-// Update HOME_ROUTE once your main app / dashboard route exists.
+//   npx expo install expo-image-picker -- --legacy-peer-deps
+//   npx expo install @react-native-community/datetimepicker -- --legacy-peer-deps
+// The band role has its own step 3: profile-setup-band.jsx ("/profile-setup-band").
 
-const HOME_ROUTE = "/dashboard-client";
+const HOME_ROUTE = "/dashboard-musician";
 
 const GENDERS = ["Male", "Female", "Other", "Prefer not to say"];
 
-const POSITIONS = [
-  "Event Organizer",
-  "Event Coordinator",
-  "Event Manager",
-  "Organization President",
-  "Committee Head",
-  "Owner/Founder",
-  "Representative",
-  "Other",
-];
+const EXPERIENCE_LEVELS = ["Beginner", "Intermediate", "Pro"];
 
 const BARANGAYS = [
   "Apokon", "Babu Pangir", "Busaon", "Canocotan", "Cuambogan", "La Filipina",
@@ -47,6 +38,20 @@ const BARANGAYS = [
   "Magugpo North", "Magugpo South", "Magugpo West", "Mankilam",
   "New Balamban", "Nueva Fuerza", "Pagsabangan", "Pandapan", "San Agustin",
   "San Isidro", "San Miguel", "Visayan Village",
+];
+
+const INSTRUMENTS = [
+  "Drum Set", "Electric Guitar", "Acoustic Guitar", "Bass Guitar",
+  "Classical Guitar", "Piano", "Trumpet", "Flute", "Violin",
+  "Main Vocal", "Support Vocal",
+];
+
+const GENRES = [
+  "OPM", "Pop", "Pop Rock", "Pinoy Rock", "Alternative Rock", "Indie Rock",
+  "Acoustic", "R&B", "Soul", "Funk", "Jazz", "Blues", "Reggae", "Punk Rock",
+  "Hard Rock", "Heavy Metal", "Folk", "Country", "Hip-Hop", "Rap", "Ballad",
+  "Disco", "Dance", "Gospel", "Bossa Nova", "Latin", "Manila Sound",
+  "Kundiman", "Novelty", "Christian Music",
 ];
 
 const BIO_MAX = 255;
@@ -60,21 +65,26 @@ function formatDate(date) {
   });
 }
 
-export default function ProfileSetupOrganizer() {
+export default function ProfileSetup() {
   const router = useRouter();
-  const { role } = useLocalSearchParams();
+  const { role, fullName } = useLocalSearchParams();
 
   const [photoUri, setPhotoUri] = useState(null);
   const [bio, setBio] = useState("");
+  const [stageName, setStageName] = useState("");
   const [gender, setGender] = useState(null);
   const [birthday, setBirthday] = useState(null);
-  const [position, setPosition] = useState(null);
+  const [experience, setExperience] = useState(null);
   const [barangay, setBarangay] = useState(null);
+  const [instruments, setInstruments] = useState([]);
+  const [genres, setGenres] = useState([]);
 
   const [genderModalOpen, setGenderModalOpen] = useState(false);
-  const [positionModalOpen, setPositionModalOpen] = useState(false);
-  const [barangayModalOpen, setBarangayModalOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [experienceModalOpen, setExperienceModalOpen] = useState(false);
+  const [barangayModalOpen, setBarangayModalOpen] = useState(false);
+  const [instrumentModalOpen, setInstrumentModalOpen] = useState(false);
+  const [genreModalOpen, setGenreModalOpen] = useState(false);
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -96,6 +106,18 @@ export default function ProfileSetupOrganizer() {
     }
   };
 
+  const toggleInstrument = (item) => {
+    setInstruments((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    );
+  };
+
+  const toggleGenre = (item) => {
+    setGenres((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    );
+  };
+
   const onChangeDate = (event, selectedDate) => {
     setShowDatePicker(Platform.OS === "ios"); // iOS keeps the sheet open until Done
     if (event.type === "dismissed") return;
@@ -106,14 +128,16 @@ export default function ProfileSetupOrganizer() {
     bio.trim().length > 0 &&
     gender !== null &&
     birthday !== null &&
-    position !== null &&
-    barangay !== null;
+    experience !== null &&
+    barangay !== null &&
+    instruments.length > 0 &&
+    genres.length > 0;
 
   const handleFinish = async () => {
     if (!canFinish) {
       Alert.alert(
         "Almost there",
-        "Fill in your bio, gender, birthday, position, and barangay."
+        "Fill in your bio, gender, birthday, experience level, barangay, at least one instrument, and at least one genre."
       );
       return;
     }
@@ -124,14 +148,15 @@ export default function ProfileSetupOrganizer() {
         photoUrl = /^https?:\/\//.test(photoUri) ? photoUri : await uploadPhoto(photoUri);
       }
 
-      // "position" (Event Organizer, Committee Head, ...) is the organizer's
-      // title, so it is stored in stageName and shown as the profile headline.
       await updateMyProfile({
-        stageName: position,
+        stageName,
+        experience,
+        barangay,
+        instruments: instruments.join(","),
+        genres: genres.join(","),
         bio: bio.trim(),
         gender,
         birthday: birthday ? birthday.toISOString() : null,
-        barangay,
         photoUrl,
       });
     } catch (err) {
@@ -140,7 +165,15 @@ export default function ProfileSetupOrganizer() {
     }
     router.replace({
       pathname: HOME_ROUTE,
-      params: { role, position, barangay },
+      params: {
+        role,
+        fullName,
+        stageName,
+        experience,
+        barangay,
+        instruments: instruments.join(","),
+        genres: genres.join(","),
+      },
     });
   };
 
@@ -174,7 +207,7 @@ export default function ProfileSetupOrganizer() {
             {/* Heading */}
             <Text style={styles.heading}>Set up your profile</Text>
             <Text style={styles.subheading}>
-              This helps musicians and bands know who they're working with.
+              This helps clients and collaborators find you.
             </Text>
 
             {/* Photo */}
@@ -195,7 +228,7 @@ export default function ProfileSetupOrganizer() {
               <TextInput
                 value={bio}
                 onChangeText={(v) => setBio(v.slice(0, BIO_MAX))}
-                placeholder="Tell musicians about the events you run"
+                placeholder="Tell people about your style and experience"
                 placeholderTextColor="rgba(255,255,255,0.45)"
                 multiline
                 maxLength={BIO_MAX}
@@ -204,6 +237,19 @@ export default function ProfileSetupOrganizer() {
               <Text style={styles.charCount}>
                 {bio.length}/{BIO_MAX}
               </Text>
+            </View>
+
+            {/* Stage name */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Stage name</Text>
+              <TextInput
+                value={stageName}
+                onChangeText={setStageName}
+                placeholder="e.g. DJ Rivera"
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                maxLength={40}
+                style={styles.textInput}
+              />
             </View>
 
             {/* Gender — dropdown */}
@@ -220,29 +266,46 @@ export default function ProfileSetupOrganizer() {
             {/* Birthday — date picker */}
             <View style={styles.field}>
               <Text style={styles.label}>Birthday</Text>
-              <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
-                <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {formatDate(birthday) ?? "Select birthday"}
-                </Text>
-                <Text style={styles.chevron}>📅</Text>
-              </Pressable>
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={birthday ?? new Date(2000, 0, 1)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  maximumDate={new Date()}
-                  onChange={onChangeDate}
+              {Platform.OS === "web" ? (
+                <input
+                  type="date"
+                  max={new Date().toISOString().split("T")[0]}
+                  value={birthday ? birthday.toISOString().split("T")[0] : ""}
+                  onChange={(e) => {
+                    if (e.target.value) setBirthday(new Date(e.target.value));
+                  }}
+                  style={webDateInputStyle}
                 />
-              ) : null}
+              ) : (
+                <>
+                  <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
+                    <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
+                      {formatDate(birthday) ?? "Select birthday"}
+                    </Text>
+                    <Text style={styles.chevron}>📅</Text>
+                  </Pressable>
+                  {showDatePicker ? (
+                    <DateTimePicker
+                      value={birthday ?? new Date(2000, 0, 1)}
+                      mode="date"
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      maximumDate={new Date()}
+                      onChange={onChangeDate}
+                    />
+                  ) : null}
+                </>
+              )}
             </View>
 
-            {/* Position — dropdown */}
+            {/* Experience level — dropdown */}
             <View style={styles.field}>
-              <Text style={styles.label}>Position</Text>
-              <Pressable onPress={() => setPositionModalOpen(true)} style={styles.dropdownField}>
-                <Text style={position ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {position ?? "Select position"}
+              <Text style={styles.label}>Experience level</Text>
+              <Pressable
+                onPress={() => setExperienceModalOpen(true)}
+                style={styles.dropdownField}
+              >
+                <Text style={experience ? styles.dropdownValue : styles.dropdownPlaceholder}>
+                  {experience ?? "Beginner · Intermediate · Pro"}
                 </Text>
                 <Text style={styles.chevron}>⌄</Text>
               </Pressable>
@@ -250,13 +313,57 @@ export default function ProfileSetupOrganizer() {
 
             {/* Barangay — dropdown */}
             <View style={styles.field}>
-              <Text style={styles.label}>Location</Text>
-              <Pressable onPress={() => setBarangayModalOpen(true)} style={styles.dropdownField}>
+              <Text style={styles.label}>Barangay</Text>
+              <Pressable
+                onPress={() => setBarangayModalOpen(true)}
+                style={styles.dropdownField}
+              >
                 <Text style={barangay ? styles.dropdownValue : styles.dropdownPlaceholder}>
                   {barangay ?? "Select barangay"}
                 </Text>
                 <Text style={styles.chevron}>⌄</Text>
               </Pressable>
+            </View>
+
+            {/* Instruments — chip multi-select */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Instrument(s)</Text>
+              <View style={styles.chipRow}>
+                {instruments.map((item) => (
+                  <Pressable
+                    key={item}
+                    onPress={() => toggleInstrument(item)}
+                    style={styles.chipSelected}
+                  >
+                    <Text style={styles.chipSelectedText}>{item}</Text>
+                  </Pressable>
+                ))}
+                <Pressable
+                  onPress={() => setInstrumentModalOpen(true)}
+                  style={styles.chipAdd}
+                >
+                  <Text style={styles.chipAddText}>+ Add</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Genres — chip multi-select */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Genres</Text>
+              <View style={styles.chipRow}>
+                {genres.map((item) => (
+                  <Pressable
+                    key={item}
+                    onPress={() => toggleGenre(item)}
+                    style={styles.chipSelected}
+                  >
+                    <Text style={styles.chipSelectedText}>{item}</Text>
+                  </Pressable>
+                ))}
+                <Pressable onPress={() => setGenreModalOpen(true)} style={styles.chipAdd}>
+                  <Text style={styles.chipAddText}>+ Add</Text>
+                </Pressable>
+              </View>
             </View>
 
             {/* Finish */}
@@ -281,12 +388,13 @@ export default function ProfileSetupOrganizer() {
         </View>
       </ScrollView>
 
-      {/* Gender picker modal */}
+      {/* Gender picker modal (single select) */}
       <SelectModal
         visible={genderModalOpen}
         title="Gender"
         options={GENDERS}
         selected={gender ? [gender] : []}
+        multiple={false}
         onSelect={(item) => {
           setGender(item);
           setGenderModalOpen(false);
@@ -294,36 +402,69 @@ export default function ProfileSetupOrganizer() {
         onClose={() => setGenderModalOpen(false)}
       />
 
-      {/* Position picker modal */}
+      {/* Experience picker modal (single select) */}
       <SelectModal
-        visible={positionModalOpen}
-        title="Position"
-        options={POSITIONS}
-        selected={position ? [position] : []}
+        visible={experienceModalOpen}
+        title="Experience level"
+        options={EXPERIENCE_LEVELS}
+        selected={experience ? [experience] : []}
+        multiple={false}
         onSelect={(item) => {
-          setPosition(item);
-          setPositionModalOpen(false);
+          setExperience(item);
+          setExperienceModalOpen(false);
         }}
-        onClose={() => setPositionModalOpen(false)}
+        onClose={() => setExperienceModalOpen(false)}
       />
 
-      {/* Barangay picker modal */}
+      {/* Barangay picker modal (single select) */}
       <SelectModal
         visible={barangayModalOpen}
         title="Select barangay"
         options={BARANGAYS}
         selected={barangay ? [barangay] : []}
+        multiple={false}
         onSelect={(item) => {
           setBarangay(item);
           setBarangayModalOpen(false);
         }}
         onClose={() => setBarangayModalOpen(false)}
       />
+
+      {/* Instrument picker modal (multi select) */}
+      <SelectModal
+        visible={instrumentModalOpen}
+        title="Instrument(s)"
+        options={INSTRUMENTS}
+        selected={instruments}
+        multiple
+        onToggle={toggleInstrument}
+        onClose={() => setInstrumentModalOpen(false)}
+      />
+
+      {/* Genre picker modal (multi select) */}
+      <SelectModal
+        visible={genreModalOpen}
+        title="Genres"
+        options={GENRES}
+        selected={genres}
+        multiple
+        onToggle={toggleGenre}
+        onClose={() => setGenreModalOpen(false)}
+      />
     </View>
   );
 }
 
-function SelectModal({ visible, title, options, selected, onSelect, onClose }) {
+function SelectModal({
+  visible,
+  title,
+  options,
+  selected,
+  multiple,
+  onSelect,
+  onToggle,
+  onClose,
+}) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose} />
@@ -338,19 +479,47 @@ function SelectModal({ visible, title, options, selected, onSelect, onClose }) {
           {options.map((item) => {
             const isSelected = selected.includes(item);
             return (
-              <Pressable key={item} onPress={() => onSelect(item)} style={styles.modalRow}>
+              <Pressable
+                key={item}
+                onPress={() => (multiple ? onToggle(item) : onSelect(item))}
+                style={styles.modalRow}
+              >
                 <Text style={styles.modalRowText}>{item}</Text>
                 {isSelected ? <Text style={styles.modalCheck}>✓</Text> : null}
               </Pressable>
             );
           })}
         </ScrollView>
+        {multiple ? (
+          <Pressable onPress={onClose} style={styles.modalDoneButtonWrap}>
+            <LinearGradient
+              colors={["#8b5cf6", "#d946ef"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modalDoneButton}
+            >
+              <Text style={styles.modalDoneText}>Done</Text>
+            </LinearGradient>
+          </Pressable>
+        ) : null}
       </BlurView>
     </Modal>
   );
 }
 
 const CARD_MAX_WIDTH = 384;
+
+const webDateInputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.15)",
+  backgroundColor: "rgba(255,255,255,0.05)",
+  borderRadius: 12,
+  padding: 14,
+  fontSize: 14,
+  color: "#fff",
+};
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#0c0a18" },
@@ -423,6 +592,17 @@ const styles = StyleSheet.create({
   field: { marginBottom: 18 },
   label: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "600", marginBottom: 8 },
 
+  textInput: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#fff",
+  },
+
   textarea: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
@@ -451,11 +631,32 @@ const styles = StyleSheet.create({
   dropdownPlaceholder: { color: "rgba(255,255,255,0.45)", fontSize: 14 },
   chevron: { color: "rgba(255,255,255,0.6)", fontSize: 16 },
 
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chipSelected: {
+    backgroundColor: "rgba(167,139,250,0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.6)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipSelectedText: { color: "#d8b4fe", fontSize: 13, fontWeight: "600" },
+  chipAdd: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipAddText: { color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: "500" },
+
   finishButton: { marginTop: 10, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
   finishButtonText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   finishButtonTextDisabled: { color: "rgba(255,255,255,0.5)" },
   pressed: { opacity: 0.9 },
 
+  // Modal
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
   modalSheet: {
     position: "absolute",
@@ -493,4 +694,7 @@ const styles = StyleSheet.create({
   },
   modalRowText: { color: "#fff", fontSize: 14 },
   modalCheck: { color: "#d8b4fe", fontSize: 14, fontWeight: "700" },
+  modalDoneButtonWrap: { marginTop: 14 },
+  modalDoneButton: { borderRadius: 12, paddingVertical: 12, alignItems: "center" },
+  modalDoneText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 });

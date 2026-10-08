@@ -15,12 +15,17 @@ import { updateMyRole } from "../api";
 // GigMatch — onboarding step 2: "How will you use GigMatch?"
 // Flow: sign-up ("/sign-up", step 1) → this screen (step 2) → step 3 (final),
 // which branches by role:
-//   musician / band   → profile-setup.jsx          ("/profile-setup")
-//   organizer / client → profile-setup-organizer.jsx ("/profile-setup-organizer")
+//   musician → profile-setup-musician.jsx  ("/profile-setup-musician")
+//   band     → profile-setup-band.jsx      ("/profile-setup-band")
+//   client (Event Organizer) → profile-setup-organizer.jsx ("/profile-setup-organizer")
+// NOTE: the users.role column is ENUM('musician','band','client'), so the
+// organizer option MUST save "client" — sending "organizer" gets rejected by
+// the ENUM and accounts stay stuck on the musician dashboard.
 // Route suggestion: app/role-select.jsx  →  "/role-select"
 
 const STEP_1_ROUTE = "/sign-up";
-const MUSICIAN_BAND_ROUTE = "/profile-setup";
+const MUSICIAN_ROUTE = "/profile-setup-musician";
+const BAND_ROUTE = "/profile-setup-band";
 const ORGANIZER_ROUTE = "/profile-setup-organizer";
 
 const ROLES = [
@@ -37,7 +42,7 @@ const ROLES = [
     description: "Manage your group profile and recruit members.",
   },
   {
-    id: "organizer",
+    id: "client",
     icon: "📅",
     title: "Event Organizer / Client",
     description: "Find and hire musicians or bands for your events.",
@@ -51,17 +56,22 @@ export default function OnboardingRoleStep() {
 
   const canContinue = selected !== null;
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!canContinue) return;
-    // Persist the choice on the server (fire-and-forget so onboarding never
-    // stalls on the network) — otherwise login always lands back on the
-    // default dashboard, because signup was created as "musician".
-    updateMyRole(selected)?.catch((err) => {
-      if (__DEV__) console.warn("[api] could not save role:", err.message);
-    });
+    // Persist the choice on the server BEFORE moving on — otherwise login
+    // always lands back on the default dashboard, because signup was created
+    // as "musician". Awaited (but never blocking) so a failed save shows up
+    // in the console instead of silently corrupting the account's role.
+    try {
+      await updateMyRole(selected);
+    } catch (err) {
+      console.warn("[api] could not save role:", err.message);
+    }
 
     const destination =
-      selected === "organizer" ? ORGANIZER_ROUTE : MUSICIAN_BAND_ROUTE;
+      selected === "client" ? ORGANIZER_ROUTE
+      : selected === "band" ? BAND_ROUTE
+      : MUSICIAN_ROUTE;
     router.push({ pathname: destination, params: { role: selected, fullName } });
   };
 

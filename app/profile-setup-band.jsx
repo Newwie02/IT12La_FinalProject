@@ -9,37 +9,21 @@ import {
   Image,
   Modal,
   Alert,
-  Platform,
 } from "react-native";
 import { updateMyProfile, uploadPhoto } from "../api";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import * as ImagePicker from "expo-image-picker";
-import DateTimePicker from "@react-native-community/datetimepicker";
 
-// GigMatch — onboarding step 3: "Set up your profile" (Event Organizer / Client)
-// Route: app/profile-setup-organizer.jsx  →  "/profile-setup-organizer"
-// Flow: sign-up (step 1) → role-select (step 2, role = "organizer") → this screen (step 3, final).
-// Requires:
-//   npx expo install expo-image-picker --legacy-peer-deps
-//   npx expo install @react-native-community/datetimepicker --legacy-peer-deps
-// Update HOME_ROUTE once your main app / dashboard route exists.
+// GigMatch — onboarding step 3: "Set up your band profile" (band)
+// Route: app/profile-setup-band.jsx  →  "/profile-setup-band"
+// Flow: sign-up (step 1) → role-select (step 2, role = "band") → this screen (step 3, final).
+// Band-specific fields only (no stage name / instruments / birthday — the full
+// band details are set later in /create-band). Lands on the musician dashboard;
+// the band dashboard unlocks once a band exists.
 
-const HOME_ROUTE = "/dashboard-client";
-
-const GENDERS = ["Male", "Female", "Other", "Prefer not to say"];
-
-const POSITIONS = [
-  "Event Organizer",
-  "Event Coordinator",
-  "Event Manager",
-  "Organization President",
-  "Committee Head",
-  "Owner/Founder",
-  "Representative",
-  "Other",
-];
+const HOME_ROUTE = "/dashboard-musician";
 
 const BARANGAYS = [
   "Apokon", "Babu Pangir", "Busaon", "Canocotan", "Cuambogan", "La Filipina",
@@ -49,39 +33,35 @@ const BARANGAYS = [
   "San Isidro", "San Miguel", "Visayan Village",
 ];
 
+const GENRES = [
+  "OPM", "Pop", "Pop Rock", "Pinoy Rock", "Alternative Rock", "Indie Rock",
+  "Acoustic", "R&B", "Soul", "Funk", "Jazz", "Blues", "Reggae", "Punk Rock",
+  "Hard Rock", "Heavy Metal", "Folk", "Country", "Hip-Hop", "Rap", "Ballad",
+  "Disco", "Dance", "Gospel", "Bossa Nova", "Latin", "Manila Sound",
+  "Kundiman", "Novelty", "Christian Music",
+];
+
 const BIO_MAX = 255;
 
-function formatDate(date) {
-  if (!date) return null;
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-export default function ProfileSetupOrganizer() {
+export default function ProfileSetupBand() {
   const router = useRouter();
-  const { role } = useLocalSearchParams();
+  const { role, fullName } = useLocalSearchParams();
 
   const [photoUri, setPhotoUri] = useState(null);
+  const [bandName, setBandName] = useState("");
   const [bio, setBio] = useState("");
-  const [gender, setGender] = useState(null);
-  const [birthday, setBirthday] = useState(null);
-  const [position, setPosition] = useState(null);
+  const [genres, setGenres] = useState([]);
   const [barangay, setBarangay] = useState(null);
 
-  const [genderModalOpen, setGenderModalOpen] = useState(false);
-  const [positionModalOpen, setPositionModalOpen] = useState(false);
   const [barangayModalOpen, setBarangayModalOpen] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [genreModalOpen, setGenreModalOpen] = useState(false);
 
   const pickPhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(
         "Permission needed",
-        "GigMatch needs access to your photos to set a profile picture."
+        "GigMatch needs access to your photos to set a band photo."
       );
       return;
     }
@@ -96,24 +76,20 @@ export default function ProfileSetupOrganizer() {
     }
   };
 
-  const onChangeDate = (event, selectedDate) => {
-    setShowDatePicker(Platform.OS === "ios"); // iOS keeps the sheet open until Done
-    if (event.type === "dismissed") return;
-    if (selectedDate) setBirthday(selectedDate);
+  const toggleGenre = (item) => {
+    setGenres((prev) =>
+      prev.includes(item) ? prev.filter((g) => g !== item) : [...prev, item]
+    );
   };
 
   const canFinish =
-    bio.trim().length > 0 &&
-    gender !== null &&
-    birthday !== null &&
-    position !== null &&
-    barangay !== null;
+    bio.trim().length > 0 && genres.length > 0 && barangay !== null;
 
   const handleFinish = async () => {
     if (!canFinish) {
       Alert.alert(
         "Almost there",
-        "Fill in your bio, gender, birthday, position, and barangay."
+        "Fill in your band bio, at least one genre, and your barangay."
       );
       return;
     }
@@ -124,14 +100,11 @@ export default function ProfileSetupOrganizer() {
         photoUrl = /^https?:\/\//.test(photoUri) ? photoUri : await uploadPhoto(photoUri);
       }
 
-      // "position" (Event Organizer, Committee Head, ...) is the organizer's
-      // title, so it is stored in stageName and shown as the profile headline.
       await updateMyProfile({
-        stageName: position,
-        bio: bio.trim(),
-        gender,
-        birthday: birthday ? birthday.toISOString() : null,
+        stageName: bandName.trim(),
         barangay,
+        genres: genres.join(","),
+        bio: bio.trim(),
         photoUrl,
       });
     } catch (err) {
@@ -140,7 +113,12 @@ export default function ProfileSetupOrganizer() {
     }
     router.replace({
       pathname: HOME_ROUTE,
-      params: { role, position, barangay },
+      params: {
+        role,
+        fullName,
+        instruments: "",
+        genres: genres.join(","),
+      },
     });
   };
 
@@ -172,9 +150,9 @@ export default function ProfileSetupOrganizer() {
             </View>
 
             {/* Heading */}
-            <Text style={styles.heading}>Set up your profile</Text>
+            <Text style={styles.heading}>Set up your band profile</Text>
             <Text style={styles.subheading}>
-              This helps musicians and bands know who they're working with.
+              This helps clients and musicians get to know your band.
             </Text>
 
             {/* Photo */}
@@ -189,13 +167,26 @@ export default function ProfileSetupOrganizer() {
               </Pressable>
             </View>
 
+            {/* Band name */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Band name</Text>
+              <TextInput
+                value={bandName}
+                onChangeText={setBandName}
+                placeholder="e.g. The Krizza Band"
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                maxLength={40}
+                style={styles.textInput}
+              />
+            </View>
+
             {/* Bio */}
             <View style={styles.field}>
               <Text style={styles.label}>Bio</Text>
               <TextInput
                 value={bio}
                 onChangeText={(v) => setBio(v.slice(0, BIO_MAX))}
-                placeholder="Tell musicians about the events you run"
+                placeholder="Tell clients and musicians about your band"
                 placeholderTextColor="rgba(255,255,255,0.45)"
                 multiline
                 maxLength={BIO_MAX}
@@ -206,52 +197,32 @@ export default function ProfileSetupOrganizer() {
               </Text>
             </View>
 
-            {/* Gender — dropdown */}
+            {/* Genres — chip multi-select */}
             <View style={styles.field}>
-              <Text style={styles.label}>Gender</Text>
-              <Pressable onPress={() => setGenderModalOpen(true)} style={styles.dropdownField}>
-                <Text style={gender ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {gender ?? "Select gender"}
-                </Text>
-                <Text style={styles.chevron}>⌄</Text>
-              </Pressable>
-            </View>
-
-            {/* Birthday — date picker */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Birthday</Text>
-              <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
-                <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {formatDate(birthday) ?? "Select birthday"}
-                </Text>
-                <Text style={styles.chevron}>📅</Text>
-              </Pressable>
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={birthday ?? new Date(2000, 0, 1)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  maximumDate={new Date()}
-                  onChange={onChangeDate}
-                />
-              ) : null}
-            </View>
-
-            {/* Position — dropdown */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Position</Text>
-              <Pressable onPress={() => setPositionModalOpen(true)} style={styles.dropdownField}>
-                <Text style={position ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {position ?? "Select position"}
-                </Text>
-                <Text style={styles.chevron}>⌄</Text>
-              </Pressable>
+              <Text style={styles.label}>Genres</Text>
+              <View style={styles.chipRow}>
+                {genres.map((item) => (
+                  <Pressable
+                    key={item}
+                    onPress={() => toggleGenre(item)}
+                    style={styles.chipSelected}
+                  >
+                    <Text style={styles.chipSelectedText}>{item}</Text>
+                  </Pressable>
+                ))}
+                <Pressable onPress={() => setGenreModalOpen(true)} style={styles.chipAdd}>
+                  <Text style={styles.chipAddText}>+ Add</Text>
+                </Pressable>
+              </View>
             </View>
 
             {/* Barangay — dropdown */}
             <View style={styles.field}>
-              <Text style={styles.label}>Location</Text>
-              <Pressable onPress={() => setBarangayModalOpen(true)} style={styles.dropdownField}>
+              <Text style={styles.label}>Barangay</Text>
+              <Pressable
+                onPress={() => setBarangayModalOpen(true)}
+                style={styles.dropdownField}
+              >
                 <Text style={barangay ? styles.dropdownValue : styles.dropdownPlaceholder}>
                   {barangay ?? "Select barangay"}
                 </Text>
@@ -281,38 +252,24 @@ export default function ProfileSetupOrganizer() {
         </View>
       </ScrollView>
 
-      {/* Gender picker modal */}
+      {/* Genre picker modal (multi select) */}
       <SelectModal
-        visible={genderModalOpen}
-        title="Gender"
-        options={GENDERS}
-        selected={gender ? [gender] : []}
-        onSelect={(item) => {
-          setGender(item);
-          setGenderModalOpen(false);
-        }}
-        onClose={() => setGenderModalOpen(false)}
+        visible={genreModalOpen}
+        title="Genres"
+        options={GENRES}
+        selected={genres}
+        multiple
+        onToggle={toggleGenre}
+        onClose={() => setGenreModalOpen(false)}
       />
 
-      {/* Position picker modal */}
-      <SelectModal
-        visible={positionModalOpen}
-        title="Position"
-        options={POSITIONS}
-        selected={position ? [position] : []}
-        onSelect={(item) => {
-          setPosition(item);
-          setPositionModalOpen(false);
-        }}
-        onClose={() => setPositionModalOpen(false)}
-      />
-
-      {/* Barangay picker modal */}
+      {/* Barangay picker modal (single select) */}
       <SelectModal
         visible={barangayModalOpen}
         title="Select barangay"
         options={BARANGAYS}
         selected={barangay ? [barangay] : []}
+        multiple={false}
         onSelect={(item) => {
           setBarangay(item);
           setBarangayModalOpen(false);
@@ -323,7 +280,16 @@ export default function ProfileSetupOrganizer() {
   );
 }
 
-function SelectModal({ visible, title, options, selected, onSelect, onClose }) {
+function SelectModal({
+  visible,
+  title,
+  options,
+  selected,
+  multiple,
+  onSelect,
+  onToggle,
+  onClose,
+}) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.modalBackdrop} onPress={onClose} />
@@ -338,13 +304,29 @@ function SelectModal({ visible, title, options, selected, onSelect, onClose }) {
           {options.map((item) => {
             const isSelected = selected.includes(item);
             return (
-              <Pressable key={item} onPress={() => onSelect(item)} style={styles.modalRow}>
+              <Pressable
+                key={item}
+                onPress={() => (multiple ? onToggle(item) : onSelect(item))}
+                style={styles.modalRow}
+              >
                 <Text style={styles.modalRowText}>{item}</Text>
                 {isSelected ? <Text style={styles.modalCheck}>✓</Text> : null}
               </Pressable>
             );
           })}
         </ScrollView>
+        {multiple ? (
+          <Pressable onPress={onClose} style={styles.modalDoneButtonWrap}>
+            <LinearGradient
+              colors={["#8b5cf6", "#d946ef"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modalDoneButton}
+            >
+              <Text style={styles.modalDoneText}>Done</Text>
+            </LinearGradient>
+          </Pressable>
+        ) : null}
       </BlurView>
     </Modal>
   );
@@ -423,6 +405,17 @@ const styles = StyleSheet.create({
   field: { marginBottom: 18 },
   label: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "600", marginBottom: 8 },
 
+  textInput: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#fff",
+  },
+
   textarea: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
@@ -451,11 +444,32 @@ const styles = StyleSheet.create({
   dropdownPlaceholder: { color: "rgba(255,255,255,0.45)", fontSize: 14 },
   chevron: { color: "rgba(255,255,255,0.6)", fontSize: 16 },
 
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chipSelected: {
+    backgroundColor: "rgba(167,139,250,0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.6)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipSelectedText: { color: "#d8b4fe", fontSize: 13, fontWeight: "600" },
+  chipAdd: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipAddText: { color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: "500" },
+
   finishButton: { marginTop: 10, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
   finishButtonText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   finishButtonTextDisabled: { color: "rgba(255,255,255,0.5)" },
   pressed: { opacity: 0.9 },
 
+  // Modal
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
   modalSheet: {
     position: "absolute",
@@ -480,17 +494,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12,
   },
-  modalTitle: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  modalClose: { color: "rgba(255,255,255,0.6)", fontSize: 16 },
-  modalList: { maxHeight: 360 },
+  modalTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  modalClose: { color: "rgba(255,255,255,0.7)", fontSize: 16 },
+  modalList: { flexGrow: 0 },
   modalRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.08)",
   },
   modalRowText: { color: "#fff", fontSize: 14 },
-  modalCheck: { color: "#d8b4fe", fontSize: 14, fontWeight: "700" },
+  modalCheck: { color: "#a78bfa", fontSize: 15, fontWeight: "700" },
+  modalDoneButtonWrap: { marginTop: 14 },
+  modalDoneButton: { borderRadius: 12, paddingVertical: 13, alignItems: "center" },
+  modalDoneText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });

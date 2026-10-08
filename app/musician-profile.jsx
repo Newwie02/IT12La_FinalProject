@@ -10,11 +10,12 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getMusicianById, resolveUrl } from "../api";
+import { getMusicianById, getUserRatingSummary, resolveUrl } from "../api";
 
 // GigMatch — Another musician's profile
 // Route: app/musician-profile.jsx  →  "/musician-profile"
 // Opened with params: id, name, tags
+// Shows their received rating average (from gigs they performed at).
 
 function toList(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -31,6 +32,7 @@ export default function MusicianProfile() {
   console.log("PROFILE ID:", id);
 
   const [user, setUser] = useState(null);
+  const [ratingInfo, setRatingInfo] = useState(null); // { average, count }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -44,10 +46,13 @@ export default function MusicianProfile() {
     }
     setLoading(true);
     setError(null);
-    getMusicianById(String(id))
-      .then((data) => {
-        console.log("PROFILE DATA:", JSON.stringify(data));
+    Promise.all([
+      getMusicianById(String(id)),
+      getUserRatingSummary(String(id)).catch(() => null), // ratings are extra
+    ])
+      .then(([data, rating]) => {
         setUser(data);
+        setRatingInfo(rating);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -109,6 +114,27 @@ export default function MusicianProfile() {
                 <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
                 <Text style={styles.messageButtonText}>Message</Text>
               </Pressable>
+
+              {/* Rating from clients after performed gigs */}
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Rating</Text>
+                {ratingInfo?.count > 0 ? (
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={18} color="#f59e0b" />
+                    <Text style={styles.ratingValue}>
+                      {Number(ratingInfo.average).toFixed(1)}
+                    </Text>
+                    <Text style={styles.bodyText}>
+                      ({ratingInfo.count} rating{ratingInfo.count === 1 ? "" : "s"})
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star-outline" size={18} color="#9ca3af" />
+                    <Text style={styles.bodyText}>No ratings yet</Text>
+                  </View>
+                )}
+              </View>
 
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>About</Text>
@@ -216,6 +242,9 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#111827", fontSize: 14, fontWeight: "700", marginBottom: 8 },
   bodyText: { color: "#4b5563", fontSize: 13, lineHeight: 19 },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  ratingValue: { color: "#111827", fontSize: 16, fontWeight: "800" },
 
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { backgroundColor: "rgba(124,58,237,0.1)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },

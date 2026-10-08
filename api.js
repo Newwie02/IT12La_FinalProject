@@ -58,8 +58,16 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   try {
     data = JSON.parse(text);
   } catch {
+    // Show the start of what the server really sent (e.g. the crash text of a 500)
+    const snippet = text
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
     throw new Error(
-      `Server returned an unexpected response (${res.status}). Is the server updated and restarted?`
+      `Server returned an unexpected response (${res.status}). ${
+        snippet || "Is the server updated and restarted?"
+      }`
     );
   }
 
@@ -195,6 +203,79 @@ export function getReceivedApplications() {
 // Band leader accepts or rejects: status is "accepted" or "rejected"
 export function respondToApplication(id, status) {
   return request(`/applications/${id}`, { method: "PATCH", auth: true, body: { status } });
+}
+
+// --- Band members (band leader) ---
+export function getBandMembers() {
+  return request("/applications/members", { auth: true });
+}
+
+// Kick a member out of the band. `applicationId` comes from getBandMembers().
+export function removeBandMember(applicationId) {
+  return request(`/applications/members/${applicationId}`, { method: "DELETE", auth: true });
+}
+
+// --- Gig applications ---
+// Musician applies to a gig
+export function applyToGig({ gigId, message }) {
+  return request("/gig-applications", { method: "POST", auth: true, body: { gigId, message } });
+}
+
+// The logged-in musician's own applications (status per gig)
+export function getMyGigApplications() {
+  return request("/gig-applications/mine", { auth: true });
+}
+
+// Applications sent to gigs the logged-in user posted (client review)
+export function getReceivedGigApplications() {
+  return request("/gig-applications/received", { auth: true });
+}
+
+// Gig poster accepts or rejects: status is "accepted" or "rejected"
+export function respondToGigApplication(id, status) {
+  return request(`/gig-applications/${id}`, { method: "PATCH", auth: true, body: { status } });
+}
+
+// --- Ratings ---
+// Rate a performer after they played your gig (1-5 stars + optional comment)
+export function createRating({ applicationId, stars, comment }) {
+  return request("/ratings", {
+    method: "POST",
+    auth: true,
+    body: { applicationId, stars, comment },
+  });
+}
+
+// Ratings the logged-in user gave (so the review screen can show "Rated ✓")
+export function getGivenRatings() {
+  return request("/ratings/given", { auth: true });
+}
+
+// Ratings the logged-in user received, with { average, count, ratings: [...] }
+export function getReceivedRatings() {
+  return request("/ratings/received", { auth: true });
+}
+
+// Public { average, count } for any user — shown on profile pages
+export function getUserRatingSummary(userId) {
+  return request(`/ratings/user/${userId}`, { auth: true });
+}
+
+// --- Notifications ---
+export function getNotifications() {
+  return request("/notifications", { auth: true });
+}
+
+export function deleteNotification(id) {
+  return request(`/notifications/${id}`, { method: "DELETE", auth: true });
+}
+
+export function markNotificationRead(id) {
+  return request(`/notifications/${id}/read`, { method: "PATCH", auth: true });
+}
+
+export function markAllNotificationsRead() {
+  return request("/notifications/read-all", { method: "PATCH", auth: true });
 }
 
 // --- Gigs ---

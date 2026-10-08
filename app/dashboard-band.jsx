@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyBand, getGigs, getMusicians, getReceivedApplications, resolveUrl } from "../api";
+import { getMyBand, getGigs, getMusicians, getReceivedApplications, getBandMembers, getNotifications, getMe, resolveUrl } from "../api";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
@@ -31,12 +31,20 @@ export default function DashboardBand() {
   const [gigs, setGigs] = useState([]);
   const [musicians, setMusicians] = useState([]);
   const [pendingApplications, setPendingApplications] = useState(0);
-  const [acceptedApplications, setAcceptedApplications] = useState(0);
+    const [acceptedApplications, setAcceptedApplications] = useState(0);
+const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell)
+  const [memberCount, setMemberCount] = useState(1);
+  const [myId, setMyId] = useState(null); // logged-in user id (for the "my gigs" count)
+   const isLeader = band ? band.isLeader !== false : params.isLeader !== "false";
 
   useEffect(() => {
     getMyBand()
       .then(setBand)
       .catch((e) => console.log("getMyBand error:", e.message));
+
+    getMe()
+      .then((u) => setMyId(u?.id ?? null))
+      .catch((e) => console.log("getMe error:", e.message));
 
     getGigs()
       .then((data) => {
@@ -45,6 +53,7 @@ export default function DashboardBand() {
         setGigs(
           list.map((g) => ({
             id: String(g.id),
+            postedById: g.postedById ?? null,
             posterName: g.title ?? g.poster?.name ?? "Gig",
             tags: toList(g.genres ?? g.genre),
             location: g.location ?? "",
@@ -82,9 +91,23 @@ export default function DashboardBand() {
           setPendingApplications(list.filter((a) => a.status === "pending").length);
           setAcceptedApplications(list.filter((a) => a.status === "accepted").length);
         })
-        .catch((e) => console.log("getReceivedApplications error:", e.message));
+                .catch((e) => console.log("getReceivedApplications error:", e.message));
+
+          getBandMembers()
+        .then((res) => {
+          if (active) setMemberCount(1 + (res.members?.length ?? 0));
+        })
+        .catch((e) => console.log("getBandMembers error:", e.message));
+
+      getNotifications()
+        .then((list) => {
+          if (active) setUnreadCount(list.filter((n) => !n.isRead).length);
+        })
+        .catch(() => {
+          if (active) setUnreadCount(0);
+        });
       return () => {
-        active = false;
+        active = false; 
       };
     }, [])
   );
@@ -95,9 +118,9 @@ export default function DashboardBand() {
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
   // Members = you (the leader) + every musician you accepted
-  const stats = { bookings: 0, pending: 0, members: 1 + acceptedApplications, rating: "0.0" };
+    const stats = { bookings: 0, pending: 0, members: memberCount, rating: "0.0" };
   const [isSwitching, setIsSwitching] = useState(false);
-  const { showAlert, AlertModal } = useAppAlert();
+  const { AlertModal } = useAppAlert();
 
   const backToMusicianView = () => {
     if (isSwitching) return;
@@ -115,6 +138,7 @@ export default function DashboardBand() {
     router.push({
       pathname: "/gig-detail",
       params: {
+        id: gig.id,
         posterName: gig.posterName,
         tags: gig.tags.join(", "),
         location: gig.location,
@@ -135,6 +159,17 @@ export default function DashboardBand() {
       },
     });
   };
+
+  // Gigs posted by the logged-in user (the leader), for the hero count
+  const myGigCount = myId
+    ? gigs.filter((g) => String(g.postedById) === String(myId)).length
+    : 0;
+
+  const postGig = () =>
+    router.push({
+      pathname: "/gig-posting",
+      params: { fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri, role: "band" },
+    });
 
   return (
     <View style={styles.page}>
@@ -157,25 +192,46 @@ export default function DashboardBand() {
             </Pressable>
             <View style={styles.headerText}>
               <Text style={styles.headerTitle}>Band — {resolvedBandName}</Text>
-              <Text style={styles.headerSubtitle}>Band leader</Text>
+                          <Text style={styles.headerSubtitle}>{isLeader ? "Band leader" : "Band member"}</Text>
             </View>
             <Pressable
               style={styles.bellButton}
               hitSlop={8}
-              onPress={() =>
-                showAlert({
-                  icon: "notifications",
-                  tone: "info",
-                  title: "Notifications",
-                  message: "No new notifications yet.",
-                })
-              }
+              onPress={() => router.push("/notifications")}
             >
               <Ionicons name="notifications" size={20} color="#7c3aed" />
+              {unreadCount > 0 ? (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                </View>
+              ) : null}
             </Pressable>
           </View>
           <Text style={styles.identityHint}>Tap your avatar to switch to your musician view</Text>
         </BlurView>
+
+        {/* Post a gig — same hero card as the client dashboard */}
+        <Pressable onPress={postGig} style={styles.heroWrap}>
+          <LinearGradient
+            colors={["#8b5cf6", "#d946ef"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroCard}
+          >
+            <View style={styles.heroIcon}>
+              <Ionicons name="add" size={24} color="#fff" />
+            </View>
+            <View style={styles.heroText}>
+              <Text style={styles.heroTitle}>Post a gig</Text>
+              <Text style={styles.heroSub}>Share your band's availability for events</Text>
+            </View>
+            <View style={styles.heroCount}>
+              <Text style={styles.heroCountValue}>{myGigCount}</Text>
+              <Text style={styles.heroCountLabel}>{myGigCount === 1 ? "gig" : "gigs"}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.85)" />
+          </LinearGradient>
+        </Pressable>
 
         {/* Upcoming gig */}
         <View style={styles.section}>
@@ -202,17 +258,18 @@ export default function DashboardBand() {
             <Text style={styles.statValue}>{stats.pending}</Text>
             <Text style={styles.statLabel}>Pending</Text>
           </View>
-          <View style={styles.statCard}>
+          <Pressable style={styles.statCard} onPress={() => router.push("/band-members")}>
             <Text style={styles.statValue}>{stats.members}</Text>
             <Text style={styles.statLabel}>Member</Text>
-          </View>
+          </Pressable>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{stats.rating}★</Text>
             <Text style={styles.statLabel}>Rating</Text>
           </View>
         </View>
 
-        {/* Applications from musicians */}
+        {/* Applications from musicians (leader only) */}
+        {isLeader ? (
         <Pressable
           onPress={() => router.push("/band-applications")}
           style={styles.applicationsCard}
@@ -232,7 +289,8 @@ export default function DashboardBand() {
             </View>
           ) : null}
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-        </Pressable>
+               </Pressable>
+        ) : null}
 
         {/* Gig Posting */}
         <View style={styles.sectionHeaderRow}>
@@ -381,7 +439,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#dc2626",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
   identityHint: { color: "#9ca3af", fontSize: 11, marginTop: 10 },
+
+  /* Post a gig hero (mirrors the client dashboard) */
+  heroWrap: { marginBottom: 18 },
+  heroCard: {
+    borderRadius: 20, padding: 16, flexDirection: "row", alignItems: "center", gap: 12,
+  },
+  heroIcon: {
+    height: 44, width: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.22)",
+    alignItems: "center", justifyContent: "center",
+  },
+  heroText: { flex: 1 },
+  heroTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  heroSub: { color: "rgba(255,255,255,0.85)", fontSize: 12, marginTop: 2 },
+  heroCount: {
+    alignItems: "center", backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6,
+  },
+  heroCountValue: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  heroCountLabel: { color: "rgba(255,255,255,0.85)", fontSize: 10, fontWeight: "600" },
 
   section: { marginBottom: 16 },
   sectionLabel: { color: "#111827", fontSize: 14, fontWeight: "700", marginBottom: 8 },
