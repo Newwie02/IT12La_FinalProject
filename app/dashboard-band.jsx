@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, Image } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyBand, getGigs, getMusicians, resolveUrl } from "../api";
+import { getMyBand, getGigs, getMusicians, getReceivedApplications, resolveUrl } from "../api";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
@@ -30,6 +30,8 @@ export default function DashboardBand() {
   const [band, setBand] = useState(null);
   const [gigs, setGigs] = useState([]);
   const [musicians, setMusicians] = useState([]);
+  const [pendingApplications, setPendingApplications] = useState(0);
+  const [acceptedApplications, setAcceptedApplications] = useState(0);
 
   useEffect(() => {
     getMyBand()
@@ -70,12 +72,30 @@ export default function DashboardBand() {
       .catch((e) => console.log("getMusicians error:", e.message));
   }, []);
 
+  // Applications from musicians: re-check every time this screen comes into view
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getReceivedApplications()
+        .then((list) => {
+          if (!active) return;
+          setPendingApplications(list.filter((a) => a.status === "pending").length);
+          setAcceptedApplications(list.filter((a) => a.status === "accepted").length);
+        })
+        .catch((e) => console.log("getReceivedApplications error:", e.message));
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
   const bandName = band?.name ?? params.bandName;
   const bandPhotoUri = resolveUrl(band?.photoUrl) ?? params.bandPhotoUri;
 
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
-  const [stats] = useState({ bookings: 0, pending: 0, members: 1, rating: "0.0" });
+  // Members = you (the leader) + every musician you accepted
+  const stats = { bookings: 0, pending: 0, members: 1 + acceptedApplications, rating: "0.0" };
   const [isSwitching, setIsSwitching] = useState(false);
   const { showAlert, AlertModal } = useAppAlert();
 
@@ -192,6 +212,28 @@ export default function DashboardBand() {
           </View>
         </View>
 
+        {/* Applications from musicians */}
+        <Pressable
+          onPress={() => router.push("/band-applications")}
+          style={styles.applicationsCard}
+        >
+          <Ionicons name="mail-unread-outline" size={20} color="#7c3aed" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.applicationsTitle}>Applications</Text>
+            <Text style={styles.applicationsSub}>
+              {pendingApplications > 0
+                ? `${pendingApplications} musician${pendingApplications === 1 ? "" : "s"} waiting for your answer`
+                : "No pending applications"}
+            </Text>
+          </View>
+          {pendingApplications > 0 ? (
+            <View style={styles.applicationsBadge}>
+              <Text style={styles.applicationsBadgeText}>{pendingApplications}</Text>
+            </View>
+          ) : null}
+          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+        </Pressable>
+
         {/* Gig Posting */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Gig Posting</Text>
@@ -235,9 +277,16 @@ export default function DashboardBand() {
         {/* Suggest musician */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Suggest musician</Text>
-          <Pressable onPress={() => router.push("/discover")}>
-            <Text style={styles.seeAll}>See all</Text>
-          </Pressable>
+         <Pressable
+  onPress={() =>
+    router.push({
+      pathname: "/musicians",
+      params: { fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri },
+    })
+  }
+>
+  <Text style={styles.seeAll}>See all</Text>
+</Pressable>
         </View>
         <ScrollView
           horizontal
@@ -354,6 +403,30 @@ const styles = StyleSheet.create({
   },
   statValue: { color: "#111827", fontSize: 18, fontWeight: "700" },
   statLabel: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
+
+  applicationsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(124,58,237,0.2)",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+  },
+  applicationsTitle: { color: "#111827", fontSize: 13, fontWeight: "700" },
+  applicationsSub: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  applicationsBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#dc2626",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  applicationsBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
 
   sectionHeaderRow: {
     flexDirection: "row",

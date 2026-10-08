@@ -16,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useAppAlert } from "../components/useAppAlert";
-import { createBand, uploadPhoto } from "../api";
+import { createBand, saveBandDetails, uploadPhoto } from "../api";
 
 
 // GigMatch — Create a band (2-step wizard, no backend yet)
@@ -224,6 +224,22 @@ const handleFinish = async () => {
       bio: description.trim(),
       photoUrl,
     });
+
+    // Save the rest of the wizard (band type, secondary genres, event types, songs...)
+    // so other users can see it on the band's profile.
+    try {
+      await saveBandDetails({
+        bandType,
+        musicalStyle: musicalStyle.trim(),
+        languages,
+        instruments: bandInstruments,
+        secondaryGenres,
+        eventTypes,
+        songs,
+      });
+    } catch (detailsErr) {
+      console.log("saveBandDetails error:", detailsErr.message);
+    }
 
     router.replace({
       pathname: "/dashboard-band",

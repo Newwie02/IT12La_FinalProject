@@ -166,6 +166,37 @@ export async function getMyBand() {
   }
 }
 
+// Extra band info (type, secondary genres, event types, songs...) — leader saves it after creating the band
+export function saveBandDetails(details) {
+  return request("/band-details/me", { method: "PUT", auth: true, body: details });
+}
+
+// Full band profile for the View Profile screen
+export function getBandProfile(id) {
+  return request(`/band-details/${id}`);
+}
+
+// --- Band applications ---
+// Musician applies to a band
+export function applyToBand({ bandId, message }) {
+  return request("/applications", { method: "POST", auth: true, body: { bandId, message } });
+}
+
+// The logged-in musician's own applications
+export function getMyApplications() {
+  return request("/applications/mine", { auth: true });
+}
+
+// Applications sent to the logged-in user's band (band leader)
+export function getReceivedApplications() {
+  return request("/applications/received", { auth: true });
+}
+
+// Band leader accepts or rejects: status is "accepted" or "rejected"
+export function respondToApplication(id, status) {
+  return request(`/applications/${id}`, { method: "PATCH", auth: true, body: { status } });
+}
+
 // --- Gigs ---
 export function getGigs() {
   return request("/gigs");

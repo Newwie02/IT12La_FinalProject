@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,22 +6,26 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  Alert,
   ActivityIndicator,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import { getMusicians, resolveUrl } from "../api";
+import {
+  getMusicians,
+  getMyBand,
+  getBands,
+  getMyApplications,
+  getReceivedApplications,
+  resolveUrl,
+} from "../api";
 
 // GigMatch — Musician / Band dashboard (home)
 // Route: app/dashboard-musician.jsx  →  "/dashboard-musician"
 // "Fellow musician" now loads REAL musicians from the backend (GET /api/users/musicians)
 // and "View Profile" opens /musician-profile with the real user id.
-
-const PLACEHOLDER_USER = {
-  bandName: "The Band",
-};
 
 const PLACEHOLDER_REMINDER = {
   date: "Sat, Oct 18 · 6:00 PM",
@@ -33,13 +37,7 @@ const PLACEHOLDER_REMINDER = {
 
 const PLACEHOLDER_STATUS = [
   { key: "active", label: "Active status", value: "Online" },
-  { key: "band", label: "Band Status", value: "Banded" },
   { key: "availability", label: "Availability", value: "Available" },
-];
-
-const PLACEHOLDER_RECOMMENDED = [
-  { id: "1", name: "Ctrl+S", tags: "Pop, R&B Band" },
-  { id: "2", name: "IV of Speeds", tags: "Rock, Pop, R&B Band" },
 ];
 
 const NAV_ITEMS = [
@@ -52,8 +50,68 @@ const NAV_ITEMS = [
 export default function DashboardMusician() {
   const router = useRouter();
   const { fullName, instruments, genres } = useLocalSearchParams();
-  const [identity, setIdentity] = useState("musician"); // "musician" | "band" — placeholder toggle
   const [activeTab, setActiveTab] = useState("home");
+
+  // Does this account own a band? (null = none, object = the band)
+  const [myBand, setMyBand] = useState(null);
+  const [bandChecked, setBandChecked] = useState(false);
+
+  // Recommended bands (real) + this musician's application status per band
+  const [bands, setBands] = useState([]);
+  const [loadingBands, setLoadingBands] = useState(true);
+  const [applicationStatus, setApplicationStatus] = useState({}); // { [bandId]: "pending" | "accepted" | "rejected" }
+  const [pendingCount, setPendingCount] = useState(0); // applications waiting for MY band
+
+  // Re-check every time this screen comes into view (e.g. after creating a band)
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getMyBand()
+        .then((band) => {
+          if (active) setMyBand(band);
+        })
+        .catch(() => {
+          if (active) setMyBand(null);
+        })
+        .finally(() => {
+          if (active) setBandChecked(true);
+        });
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  // Load bands + application info every time this screen comes into view
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all([
+        getBands(),
+        getMyApplications().catch(() => []),
+        getReceivedApplications().catch(() => []),
+      ])
+        .then(([allBands, mine, received]) => {
+          if (!active) return;
+          setBands(allBands);
+          const map = {};
+          mine.forEach((a) => {
+            map[a.bandId] = a.status;
+          });
+          setApplicationStatus(map);
+          setPendingCount(received.filter((a) => a.status === "pending").length);
+        })
+        .catch(() => {
+          if (active) setBands([]);
+        })
+        .finally(() => {
+          if (active) setLoadingBands(false);
+        });
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   // Real musicians from the backend
   const [musicians, setMusicians] = useState([]);
@@ -74,23 +132,78 @@ export default function DashboardMusician() {
     });
   };
 
+  const MUSICIAN_PREVIEW_LIMIT = 3;
+  const visibleMusicians = musicians.slice(0, MUSICIAN_PREVIEW_LIMIT);
+
   const musicianName = fullName?.trim() ? fullName.trim() : "Musician";
   const instrumentTags = instruments ? instruments.split(",").filter(Boolean) : [];
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
-  const isBand = identity === "band";
-  const displayName = isBand ? PLACEHOLDER_USER.bandName : musicianName;
-  const headerLabel = isBand ? `Band — ${PLACEHOLDER_USER.bandName}` : `Musician — ${musicianName}`;
+  const hasBand = !!myBand;
+  const displayName = musicianName;
+  const headerLabel = `Musician — ${musicianName}`;
 
-  const toggleIdentity = () => {
-    setIdentity((prev) => (prev === "musician" ? "band" : "musician"));
+  // Status cards: "Band Status" depends on whether the account has a band
+  const statusItems = [
+    PLACEHOLDER_STATUS[0],
+    { key: "band", label: "Band Status", value: hasBand ? "Banded" : "No band yet" },
+    PLACEHOLDER_STATUS[1],
+  ];
+
+  // Avatar tap: only accounts with a band can switch to the band dashboard
+  const handleSwitchDashboard = () => {
+    if (!bandChecked) return;
+    if (!myBand) {
+      Alert.alert(
+        "No band yet",
+        "Create a band first to unlock the band dashboard."
+      );
+      return;
+    }
+    router.replace({
+      pathname: "/dashboard-band",
+      params: {
+        ...carryParams,
+        bandName: myBand.name ?? "",
+        bandPhotoUri: myBand.photoUrl ?? "",
+        bandDescription: myBand.bio ?? "",
+        bandLocation: myBand.location ?? "",
+        primaryGenres: myBand.genre ?? "",
+      },
+    });
+  };
+
+  // Params passed along so the next screen keeps your name / tags
+  const carryParams = Object.fromEntries(
+    Object.entries({ fullName, instruments, genres }).filter(([, v]) => v !== undefined)
+  );
+
+  const handleNavPress = (key) => {
+    if (key === "home") {
+      setActiveTab("home");
+      return;
+    }
+    if (key === "discover") {
+      router.push({ pathname: "/discover", params: carryParams });
+    } else if (key === "messages") {
+      router.push("/messages");
+    } else if (key === "profile") {
+      router.push({ pathname: "/profile-musician", params: carryParams });
+    }
+  };
+
+  // Bands to recommend: every band except my own
+  const recommendedBands = bands.filter((b) => !myBand || b.id !== myBand.id);
+
+  const openBandProfile = (band) => {
+    router.push({
+      pathname: "/band-profile",
+      params: { id: String(band.id), name: band.name },
+    });
   };
 
   const handleCreateBand = () => {
-    router.push({
-      pathname: "/create-band",
-      params: { fullName, instruments, genres },
-    });
+    router.push({ pathname: "/create-band", params: carryParams });
   };
 
   return (
@@ -107,13 +220,9 @@ export default function DashboardMusician() {
         {/* Header */}
         <BlurView intensity={50} tint="light" style={styles.headerCard}>
           <View style={styles.headerRow}>
-            <Pressable onPress={toggleIdentity} style={styles.avatarWrap}>
+            <Pressable onPress={handleSwitchDashboard} style={styles.avatarWrap}>
               <View style={styles.avatar}>
-                <Ionicons
-                  name={isBand ? "people" : "person"}
-                  size={20}
-                  color="#7c3aed"
-                />
+                <Ionicons name="person" size={20} color="#7c3aed" />
               </View>
             </Pressable>
             <View style={styles.headerText}>
@@ -125,7 +234,11 @@ export default function DashboardMusician() {
             </Pressable>
           </View>
           <Text style={styles.identityHint}>
-            Tap your avatar to preview band mode (placeholder)
+            {!bandChecked
+              ? " "
+              : hasBand
+              ? `Tap your avatar to switch to ${myBand.name} (band dashboard)`
+              : "Create a band to unlock the band dashboard"}
           </Text>
         </BlurView>
 
@@ -183,7 +296,7 @@ export default function DashboardMusician() {
 
         {/* Status cards */}
         <View style={styles.statusRow}>
-          {PLACEHOLDER_STATUS.map((item) => (
+          {statusItems.map((item) => (
             <BlurView key={item.key} intensity={40} tint="light" style={styles.statusCard}>
               <View style={styles.statusDot} />
               <Text style={styles.statusValue}>{item.value}</Text>
@@ -193,37 +306,107 @@ export default function DashboardMusician() {
         </View>
 
         {/* Create band CTA — only relevant while in musician mode */}
-        {!isBand ? (
+        {bandChecked && !hasBand ? (
           <Pressable onPress={handleCreateBand} style={styles.createBandButton}>
             <Ionicons name="add-circle" size={18} color="#7c3aed" />
             <Text style={styles.createBandText}>Create a band</Text>
           </Pressable>
         ) : null}
 
+        {/* Band leader: applications from musicians */}
+        {hasBand ? (
+          <Pressable
+            onPress={() => router.push("/band-applications")}
+            style={styles.applicationsCard}
+          >
+            <Ionicons name="mail-unread-outline" size={20} color="#7c3aed" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.applicationsTitle}>Band applications</Text>
+              <Text style={styles.applicationsSub}>
+                {pendingCount > 0
+                  ? `${pendingCount} musician${pendingCount === 1 ? "" : "s"} waiting for your answer`
+                  : "No pending applications"}
+              </Text>
+            </View>
+            {pendingCount > 0 ? (
+              <View style={styles.applicationsBadge}>
+                <Text style={styles.applicationsBadgeText}>{pendingCount}</Text>
+              </View>
+            ) : null}
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </Pressable>
+        ) : null}
+
         {/* Recommended for you */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recommended for you</Text>
-          <Pressable>
+          <Pressable onPress={() => router.push({ pathname: "/discover", params: carryParams })}>
             <Text style={styles.seeAll}>See all</Text>
           </Pressable>
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.recommendedRow}
-        >
-          {PLACEHOLDER_RECOMMENDED.map((band) => (
-            <BlurView key={band.id} intensity={40} tint="light" style={styles.recommendedCard}>
-              <View style={styles.recommendedAvatar} />
-              <Text style={styles.recommendedName}>{band.name}</Text>
-              <Text style={styles.recommendedTags}>{band.tags}</Text>
-            </BlurView>
-          ))}
-        </ScrollView>
+        {loadingBands ? (
+          <ActivityIndicator color={PURPLE} style={{ marginVertical: 20 }} />
+        ) : recommendedBands.length === 0 ? (
+          <Text style={styles.emptyText}>No bands to recommend yet.</Text>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.recommendedRow}
+          >
+            {recommendedBands.map((band) => {
+              const status = applicationStatus[band.id];
+              const photo = resolveUrl(band.photoUrl);
+              return (
+                <BlurView key={band.id} intensity={40} tint="light" style={styles.recommendedCard}>
+                  <View style={styles.recommendedAvatar}>
+                    {photo ? (
+                      <Image source={{ uri: photo }} style={styles.recommendedAvatarImage} />
+                    ) : (
+                      <Ionicons name="people" size={22} color="#7c3aed" />
+                    )}
+                  </View>
+                  <Text style={styles.recommendedName} numberOfLines={1}>
+                    {band.name}
+                  </Text>
+                  <Text style={styles.recommendedTags} numberOfLines={2}>
+                    {[band.genre, band.location].filter(Boolean).join(" · ")}
+                  </Text>
+
+                  {status === "pending" || status === "accepted" ? (
+                    <View
+                      style={[
+                        styles.applyStatus,
+                        status === "accepted" && styles.applyStatusAccepted,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.applyStatusText,
+                          status === "accepted" && styles.applyStatusAcceptedText,
+                        ]}
+                      >
+                        {status === "accepted" ? "Accepted" : "Applied · pending"}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Pressable onPress={() => openBandProfile(band)} style={styles.applyButton}>
+                    <Text style={styles.applyButtonText}>View Profile</Text>
+                  </Pressable>
+                </BlurView>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* Fellow musician — REAL users from the database */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Fellow musician</Text>
+          {musicians.length > MUSICIAN_PREVIEW_LIMIT ? (
+            <Pressable onPress={() => router.push("/all-musicians")}>
+              <Text style={styles.seeAll}>See all</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {loadingMusicians ? (
@@ -233,7 +416,7 @@ export default function DashboardMusician() {
         ) : musicians.length === 0 ? (
           <Text style={styles.emptyText}>No other musicians yet.</Text>
         ) : (
-          musicians.map((person) => {
+          visibleMusicians.map((person) => {
             const photo = resolveUrl(person.photoUrl);
             return (
               <BlurView key={person.id} intensity={40} tint="light" style={styles.personRow}>
@@ -266,7 +449,7 @@ export default function DashboardMusician() {
           return (
             <Pressable
               key={item.key}
-              onPress={() => setActiveTab(item.key)}
+              onPress={() => handleNavPress(item.key)}
               style={styles.navItem}
             >
               <Ionicons
@@ -421,9 +604,56 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: "rgba(124,58,237,0.15)",
     marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
+  recommendedAvatarImage: { width: "100%", height: "100%" },
   recommendedName: { color: "#111827", fontSize: 13, fontWeight: "700" },
   recommendedTags: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
+
+  applyButton: {
+    marginTop: 10,
+    backgroundColor: PURPLE,
+    borderRadius: 999,
+    paddingVertical: 7,
+    alignItems: "center",
+  },
+  applyButtonText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  applyStatus: {
+    marginTop: 10,
+    backgroundColor: "rgba(124,58,237,0.1)",
+    borderRadius: 999,
+    paddingVertical: 7,
+    alignItems: "center",
+  },
+  applyStatusAccepted: { backgroundColor: "rgba(34,197,94,0.12)" },
+  applyStatusText: { color: PURPLE, fontSize: 11, fontWeight: "700" },
+  applyStatusAcceptedText: { color: "#16a34a" },
+
+  applicationsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(124,58,237,0.2)",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+  },
+  applicationsTitle: { color: "#111827", fontSize: 13, fontWeight: "700" },
+  applicationsSub: { color: "#6b7280", fontSize: 12, marginTop: 2 },
+  applicationsBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#dc2626",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  applicationsBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
 
   emptyText: { color: "#6b7280", fontSize: 13, textAlign: "center", marginVertical: 16 },
 
