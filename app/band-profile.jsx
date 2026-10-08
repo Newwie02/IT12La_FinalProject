@@ -53,7 +53,9 @@ export default function BandProfile() {
   const [photoFailed, setPhotoFailed] = useState(false);
 
   const [appStatus, setAppStatus] = useState(null); // null | "pending" | "accepted" | "rejected"
-  const [isMyBand, setIsMyBand] = useState(false);
+  const [isMyBand, setIsMyBand] = useState(false); // this exact band is mine
+  const [ownsBand, setOwnsBand] = useState(false); // I own some band
+  const [isMember, setIsMember] = useState(false); // I was accepted into some band
   const [applying, setApplying] = useState(false);
 
   useEffect(() => {
@@ -74,6 +76,8 @@ export default function BandProfile() {
         const existing = mine.find((a) => String(a.bandId) === String(id));
         setAppStatus(existing ? existing.status : null);
         setIsMyBand(!!myBand && String(myBand.id) === String(id));
+        setOwnsBand(!!myBand);
+        setIsMember(mine.some((a) => a.status === "accepted"));
       })
       .catch((e) => {
         if (active) setError(e.message || "Couldn't load this band.");
@@ -128,6 +132,12 @@ export default function BandProfile() {
   let applyDisabled = false;
   if (applying) {
     applyLabel = "Applying...";
+    applyDisabled = true;
+  } else if (ownsBand) {
+    applyLabel = "You already have your own band";
+    applyDisabled = true;
+  } else if (isMember && appStatus !== "accepted") {
+    applyLabel = "You're already in another band";
     applyDisabled = true;
   } else if (appStatus === "pending") {
     applyLabel = "Applied · waiting for the leader";

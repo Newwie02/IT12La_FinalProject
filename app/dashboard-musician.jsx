@@ -140,13 +140,16 @@ export default function DashboardMusician() {
   const genreTags = genres ? genres.split(",").filter(Boolean) : [];
 
   const hasBand = !!myBand;
+  // One band per musician: accepted into someone else's band counts too
+  const isMember = Object.values(applicationStatus).includes("accepted");
+  const memberBand = bands.find((b) => applicationStatus[b.id] === "accepted");
   const displayName = musicianName;
   const headerLabel = `Musician — ${musicianName}`;
 
   // Status cards: "Band Status" depends on whether the account has a band
   const statusItems = [
     PLACEHOLDER_STATUS[0],
-    { key: "band", label: "Band Status", value: hasBand ? "Banded" : "No band yet" },
+    { key: "band", label: "Band Status", value: hasBand || isMember ? "Banded" : "No band yet" },
     PLACEHOLDER_STATUS[1],
   ];
 
@@ -306,11 +309,21 @@ export default function DashboardMusician() {
         </View>
 
         {/* Create band CTA — only relevant while in musician mode */}
-        {bandChecked && !hasBand ? (
+        {bandChecked && !hasBand && !isMember ? (
           <Pressable onPress={handleCreateBand} style={styles.createBandButton}>
             <Ionicons name="add-circle" size={18} color="#7c3aed" />
             <Text style={styles.createBandText}>Create a band</Text>
           </Pressable>
+        ) : null}
+
+        {/* Member of someone else's band */}
+        {isMember ? (
+          <View style={styles.memberCard}>
+            <Ionicons name="checkmark-circle" size={18} color="#16a34a" />
+            <Text style={styles.memberText}>
+              You're a member of {memberBand?.name ?? "a band"}. A musician can only be in one band.
+            </Text>
+          </View>
         ) : null}
 
         {/* Band leader: applications from musicians */}
@@ -630,6 +643,17 @@ const styles = StyleSheet.create({
   applyStatusAccepted: { backgroundColor: "rgba(34,197,94,0.12)" },
   applyStatusText: { color: PURPLE, fontSize: 11, fontWeight: "700" },
   applyStatusAcceptedText: { color: "#16a34a" },
+
+  memberCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 20,
+  },
+  memberText: { flex: 1, color: "#166534", fontSize: 12, lineHeight: 17 },
 
   applicationsCard: {
     flexDirection: "row",
