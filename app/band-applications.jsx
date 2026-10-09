@@ -78,7 +78,7 @@ export default function BandApplications() {
   };
 
   const confirmAnswer = (application, status) => {
-    const who = application.applicant?.stageName?.trim() || application.applicant?.name || "this musician";
+    const who = application.applicant?.name?.trim() || application.applicant?.stageName || "this musician";
     Alert.alert(
       status === "accepted" ? "Accept application?" : "Reject application?",
       status === "accepted"
@@ -129,7 +129,9 @@ export default function BandApplications() {
         </View>
 
         <Text style={styles.title}>Band applications</Text>
-        <Text style={styles.subtitle}>Musicians who want to join your band.</Text>
+        <Text style={styles.subtitle}>
+          Musicians who want to join — plus the invitations you've sent.
+        </Text>
 
         <View style={styles.tabRow}>
           {TABS.map((t) => {
@@ -169,10 +171,13 @@ export default function BandApplications() {
         ) : (
           visible.map((app) => {
             const applicant = app.applicant;
-            const name = applicant?.stageName?.trim() || applicant?.name || "Musician";
+            const name = applicant?.name?.trim() || applicant?.stageName || "Musician";
             const photo = resolveUrl(applicant?.photoUrl);
             const instruments = toList(applicant?.instruments);
             const busy = busyId === app.id;
+            // A pending row I created myself (Hire from a profile) — I can't
+            // answer it; only the musician can, so show "awaiting reply".
+            const sentInvite = app.status === "pending" && app.invitedBy === "band";
 
             return (
               <View key={app.id} style={styles.card}>
@@ -191,7 +196,9 @@ export default function BandApplications() {
                       {applicant?.barangay ? ` · ${applicant.barangay}` : ""}
                     </Text>
                     {app.band?.name ? (
-                      <Text style={styles.forBand}>Applying to {app.band.name}</Text>
+                      <Text style={styles.forBand}>
+                        {sentInvite ? `Invited to join ${app.band.name}` : `Applying to ${app.band.name}`}
+                      </Text>
                     ) : null}
                   </View>
                   <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
@@ -200,22 +207,29 @@ export default function BandApplications() {
                 {app.message ? <Text style={styles.message}>“{app.message}”</Text> : null}
 
                 {app.status === "pending" ? (
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      disabled={busy}
-                      onPress={() => confirmAnswer(app, "rejected")}
-                      style={[styles.actionButton, styles.rejectButton]}
-                    >
-                      <Text style={styles.rejectText}>{busy ? "..." : "Reject"}</Text>
-                    </Pressable>
-                    <Pressable
-                      disabled={busy}
-                      onPress={() => confirmAnswer(app, "accepted")}
-                      style={[styles.actionButton, styles.acceptButton]}
-                    >
-                      <Text style={styles.acceptText}>{busy ? "..." : "Accept"}</Text>
-                    </Pressable>
-                  </View>
+                  sentInvite ? (
+                    <View style={styles.awaitingRow}>
+                      <Ionicons name="time-outline" size={14} color="#b45309" />
+                      <Text style={styles.awaitingText}>Invitation sent · awaiting reply</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.actionRow}>
+                      <Pressable
+                        disabled={busy}
+                        onPress={() => confirmAnswer(app, "rejected")}
+                        style={[styles.actionButton, styles.rejectButton]}
+                      >
+                        <Text style={styles.rejectText}>{busy ? "..." : "Reject"}</Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={busy}
+                        onPress={() => confirmAnswer(app, "accepted")}
+                        style={[styles.actionButton, styles.acceptButton]}
+                      >
+                        <Text style={styles.acceptText}>{busy ? "..." : "Accept"}</Text>
+                      </Pressable>
+                    </View>
+                  )
                 ) : (
                   <View
                     style={[
@@ -314,6 +328,9 @@ const styles = StyleSheet.create({
   forBand: { color: PURPLE, fontSize: 11, fontWeight: "600", marginTop: 3 },
 
   message: { color: "#4b5563", fontSize: 13, lineHeight: 19, marginTop: 12 },
+
+  awaitingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 14 },
+  awaitingText: { color: "#b45309", fontSize: 12, fontWeight: "600" },
 
   actionRow: { flexDirection: "row", gap: 10, marginTop: 14 },
   actionButton: { flex: 1, borderRadius: 12, paddingVertical: 11, alignItems: "center" },

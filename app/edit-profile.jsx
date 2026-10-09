@@ -16,11 +16,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyProfile, updateMyProfile, uploadPhoto, changePassword } from "../api";
+import { getMyProfile, updateMyProfile, uploadPhoto, changePassword, resolveUrl } from "../api";
  
-// GigMatch — Edit profile (musician)
+// GigMatch — Edit profile (musician & client)
 // Route: app/edit-profile.jsx  →  "/edit-profile"
 // Editable: photo, stage name, barangay, instruments, genres, password.
+// Role-aware: clients don't play instruments, so the Instruments/Genres
+// fields (and their save requirements) are skipped for the client role.
  
 const BARANGAYS = [
   "Apokon", "Babu Pangir", "Busaon", "Canocotan", "Cuambogan", "La Filipina",
@@ -56,6 +58,7 @@ export default function EditProfile() {
   const { showAlert, AlertModal } = useAppAlert();
  
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState(null); // "musician" | "band" | "client"
   const [photoUri, setPhotoUri] = useState(null); // current URL or newly picked local uri
   const [photoFailed, setPhotoFailed] = useState(false);
   const [stageName, setStageName] = useState("");
@@ -78,7 +81,10 @@ export default function EditProfile() {
   useEffect(() => {
     getMyProfile()
       .then((me) => {
-        setPhotoUri(me.photoUrl || null);
+        // Resolve onto the current server host so old/stale-IP URLs still show
+        // (and get saved back healed the next time the profile is written).
+        setPhotoUri(resolveUrl(me.photoUrl) || null);
+        setRole(me.role ?? null);
         setStageName(me.stageName ?? "");
         setBio(me.bio ?? "");
         setBarangay(me.barangay || null);
@@ -88,6 +94,9 @@ export default function EditProfile() {
       .catch((e) => console.log("getMyProfile error:", e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // Clients don't have instruments/genres — skip those fields and requirements
+  const isClientRole = role === "client" || role === "organizer";
  
   const toggle = (setList) => (item) =>
     setList((prev) => (prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]));
@@ -118,15 +127,19 @@ export default function EditProfile() {
   };
  
   const canSaveProfile =
-    bio.trim().length > 0 && barangay !== null && instruments.length > 0 && genres.length > 0;
- 
+    bio.trim().length > 0 &&
+    barangay !== null &&
+    (isClientRole || (instruments.length > 0 && genres.length > 0));
+
   const handleSaveProfile = async () => {
     if (!canSaveProfile) {
       showAlert({
         icon: "alert-circle",
         tone: "warning",
         title: "Almost there",
-        message: "Add a bio, pick a barangay, and choose at least one instrument and one genre.",
+        message: isClientRole
+          ? "Add a bio and pick a barangay."
+          : "Add a bio, pick a barangay, and choose at least one instrument and one genre.",
       });
       return;
     }
@@ -136,14 +149,18 @@ export default function EditProfile() {
       if (photoUri && !/^https?:\/\//.test(photoUri)) {
         photoUrl = await uploadPhoto(photoUri);
       }
-      await updateMyProfile({
+      const payload = {
         stageName: stageName.trim(),
         bio: bio.trim(),
         barangay,
-        instruments: instruments.join(","),
-        genres: genres.join(","),
         photoUrl,
-      });
+      };
+      // Only musicians/bands carry instruments & genres
+      if (!isClientRole) {
+        payload.instruments = instruments.join(",");
+        payload.genres = genres.join(",");
+      }
+      await updateMyProfile(payload);
       showAlert({
         icon: "checkmark-circle",
         tone: "success",
@@ -242,11 +259,11 @@ export default function EditProfile() {
  
             {/* Stage name */}
             <View style={styles.field}>
-              <Text style={styles.label}>Stage name</Text>
+              <Text style={styles.label}>{isClientRole ? "Position / title" : "Stage name"}</Text>
               <TextInput
                 value={stageName}
                 onChangeText={setStageName}
-                placeholder="e.g. DJ Rivera"
+                placeholder={isClientRole ? "e.g. Event Organizer" : "e.g. DJ Rivera"}
                 placeholderTextColor="#9ca3af"
                 maxLength={40}
                 style={styles.input}
@@ -281,35 +298,39 @@ export default function EditProfile() {
               </Pressable>
             </View>
  
-            {/* Instruments */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Instrument(s)</Text>
-              <View style={styles.chipRow}>
-                {instruments.map((item) => (
-                  <Pressable key={item} onPress={() => toggleInstrument(item)} style={styles.chipSelected}>
-                    <Text style={styles.chipSelectedText}>{item}</Text>
+            {/* Instruments (not shown for the client role) */}
+            {!isClientRole ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Instrument(s)</Text>
+                <View style={styles.chipRow}>
+                  {instruments.map((item) => (
+                    <Pressable key={item} onPress={() => toggleInstrument(item)} style={styles.chipSelected}>
+                      <Text style={styles.chipSelectedText}>{item}</Text>
+                    </Pressable>
+                  ))}
+                  <Pressable onPress={() => setInstrumentModalOpen(true)} style={styles.chipAdd}>
+                    <Text style={styles.chipAddText}>+ Add</Text>
                   </Pressable>
-                ))}
-                <Pressable onPress={() => setInstrumentModalOpen(true)} style={styles.chipAdd}>
-                  <Text style={styles.chipAddText}>+ Add</Text>
-                </Pressable>
+                </View>
               </View>
-            </View>
- 
-            {/* Genres */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Genres</Text>
-              <View style={styles.chipRow}>
-                {genres.map((item) => (
-                  <Pressable key={item} onPress={() => toggleGenre(item)} style={styles.chipSelected}>
-                    <Text style={styles.chipSelectedText}>{item}</Text>
+            ) : null}
+
+            {/* Genres (not shown for the client role) */}
+            {!isClientRole ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>Genres</Text>
+                <View style={styles.chipRow}>
+                  {genres.map((item) => (
+                    <Pressable key={item} onPress={() => toggleGenre(item)} style={styles.chipSelected}>
+                      <Text style={styles.chipSelectedText}>{item}</Text>
+                    </Pressable>
+                  ))}
+                  <Pressable onPress={() => setGenreModalOpen(true)} style={styles.chipAdd}>
+                    <Text style={styles.chipAddText}>+ Add</Text>
                   </Pressable>
-                ))}
-                <Pressable onPress={() => setGenreModalOpen(true)} style={styles.chipAdd}>
-                  <Text style={styles.chipAddText}>+ Add</Text>
-                </Pressable>
+                </View>
               </View>
-            </View>
+            ) : null}
  
             <Pressable
               onPress={handleSaveProfile}

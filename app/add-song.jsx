@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,25 +13,49 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppAlert } from "../components/useAppAlert";
+import { getMyBand, getBandProfile, saveBandDetails } from "../api";
 
-// GigMatch — Add New Song (used from create-band.jsx step 2)
+// GigMatch — Add New Song (used from create-band.jsx step 2, or from the
+// band's own profile menu)
 // Route: app/add-song.jsx  →  "/add-song"
 //
-// Receives all of create-band's in-progress step 1 + step 2 fields as
-// params (so nothing typed there is lost), plus the existing songs list
-// as JSON. On Cancel or Add song, returns to /create-band with those same
-// params — updated with the new song on Add, unchanged on Cancel — plus
-// resumeStep="2" so it reopens on the Music Information step.
+// • Create-band mode (default): receives all of create-band's in-progress
+//   step 1 + step 2 fields as params (so nothing typed there is lost), plus
+//   the existing songs list as JSON. On Cancel or Add song, returns to
+//   /create-band with those same params — updated with the new song on Add,
+//   unchanged on Cancel — plus resumeStep="2".
+// • Profile mode ({ from: "profile" }, pushed from /profile-band): loads the
+//   band's SAVED details itself, appends the song to the portfolio, saves
+//   with PUT /api/band-details/me, then goes back to the profile.
 
 export default function AddSong() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const isProfileMode = params.from === "profile";
 
   const [title, setTitle] = useState("");
   const [songType, setSongType] = useState("original"); // "original" | "cover"
   const [artist, setArtist] = useState("");
   const [link, setLink] = useState("");
+  const [bandDetails, setBandDetails] = useState(null); // saved details (profile mode)
+  const [loadingProfile, setLoadingProfile] = useState(isProfileMode);
+  const [saving, setSaving] = useState(false);
   const { showAlert, AlertModal } = useAppAlert();
+
+  // Profile mode: load the band's saved details. They must be sent BACK on
+  // save — PUT /api/band-details/me replaces every field, so anything not
+  // included would be wiped.
+  useEffect(() => {
+    if (!isProfileMode) return;
+    getMyBand()
+      .then((band) => (band?.id ? getBandProfile(band.id) : Promise.reject(new Error("No band yet"))))
+      .then(setBandDetails)
+      .catch((e) => {
+        console.log("add-song profile load error:", e.message);
+        router.replace("/profile-band");
+      })
+      .finally(() => setLoadingProfile(false));
+  }, [isProfileMode]);
 
   const canAdd = title.trim().length > 0 && artist.trim().length > 0;
 
@@ -43,10 +67,15 @@ export default function AddSong() {
   };
 
   const handleCancel = () => {
+    if (isProfileMode) {
+      router.back();
+      return;
+    }
     returnToCreateBand();
   };
 
   const handleAddSong = () => {
+    if (saving || loadingProfile) return;
     if (!canAdd) {
       showAlert({
         icon: "alert-circle",
@@ -56,12 +85,6 @@ export default function AddSong() {
       });
       return;
     }
-    let existingSongs = [];
-    try {
-      existingSongs = params.songs ? JSON.parse(params.songs) : [];
-    } catch {
-      existingSongs = [];
-    }
     const newSong = {
       id: Date.now().toString(),
       title: title.trim(),
@@ -69,6 +92,42 @@ export default function AddSong() {
       artist: artist.trim(),
       link: link.trim(),
     };
+
+    // Profile mode: append to the band's saved portfolio, then go back
+    if (isProfileMode) {
+      (async () => {
+        setSaving(true);
+        try {
+          const existing = Array.isArray(bandDetails?.songs) ? bandDetails.songs : [];
+          await saveBandDetails({ ...bandDetails, songs: [...existing, newSong] });
+          showAlert({
+            icon: "checkmark-circle",
+            tone: "success",
+            title: "Song added",
+            message: `"${newSong.title}" was added to your band's portfolio.`,
+            buttons: [{ label: "OK", onPress: () => router.back() }],
+          });
+        } catch (err) {
+          showAlert({
+            icon: "alert-circle",
+            tone: "warning",
+            title: "Couldn't save song",
+            message: err.message || "Please try again.",
+          });
+        } finally {
+          setSaving(false);
+        }
+      })();
+      return;
+    }
+
+    // Create-band mode: hand the updated list back to the wizard
+    let existingSongs = [];
+    try {
+      existingSongs = params.songs ? JSON.parse(params.songs) : [];
+    } catch {
+      existingSongs = [];
+    }
     returnToCreateBand({ songs: JSON.stringify([...existingSongs, newSong]) });
   };
 
@@ -83,6 +142,11 @@ export default function AddSong() {
         </Pressable>
 
         <Text style={styles.title}>Add New Song</Text>
+        {isProfileMode ? (
+          <Text style={styles.subtitle}>
+            Adds to your band's portfolio — it appears on your public profile.
+          </Text>
+        ) : null}
 
         <View style={styles.field}>
           <Text style={styles.label}>Song title</Text>
@@ -146,7 +210,8 @@ export default function AddSong() {
           </Pressable>
           <Pressable
             onPress={handleAddSong}
-            style={({ pressed }) => [{ flex: 1 }, pressed && canAdd && styles.pressed]}
+            disabled={saving || loadingProfile}
+            style={({ pressed }) => [{ flex: 1 }, pressed && canAdd && !saving && styles.pressed]}
           >
             <LinearGradient
               colors={canAdd ? ["#8b5cf6", "#d946ef"] : ["#e5e0f5", "#e5e0f5"]}
@@ -155,7 +220,7 @@ export default function AddSong() {
               style={styles.addButton}
             >
               <Text style={[styles.addButtonText, !canAdd && styles.addButtonTextDisabled]}>
-                Add song
+                {saving ? "Adding..." : loadingProfile ? "Loading..." : "Add song"}
               </Text>
             </LinearGradient>
           </Pressable>
@@ -182,6 +247,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: { color: "#111827", fontSize: 22, fontWeight: "700", marginBottom: 22 },
+  subtitle: { color: "#6b7280", fontSize: 13, lineHeight: 18, marginTop: -16, marginBottom: 18 },
 
   field: { marginBottom: 18 },
   label: { color: "#111827", fontSize: 13, fontWeight: "600", marginBottom: 8 },

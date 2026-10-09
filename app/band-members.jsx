@@ -96,7 +96,7 @@ export default function BandMembers() {
   };
 
   const confirmKick = (member) => {
-    const name = member.user?.stageName?.trim() || member.user?.name || "this musician";
+    const name = member.user?.name?.trim() || member.user?.stageName || "this musician";
     Alert.alert(
       `Remove ${name}?`,
       "They will be removed from your band and notified by the app.",
@@ -149,7 +149,7 @@ export default function BandMembers() {
               <View style={styles.card}>
                 <Avatar user={leader} />
                 <View style={styles.cardText}>
-                  <Text style={styles.name}>{leader.stageName?.trim() || leader.name}</Text>
+                  <Text style={styles.name}>{leader.name?.trim() || leader.stageName}</Text>
                   <Text style={styles.meta}>
                     {toList(leader.instruments).join(", ") || "No instruments listed"}
                   </Text>
@@ -170,7 +170,7 @@ export default function BandMembers() {
             ) : (
               members.map((member) => {
                 const user = member.user;
-                const name = user?.stageName?.trim() || user?.name || "Musician";
+                const name = user?.name?.trim() || user?.stageName || "Musician";
                 const instruments = toList(user?.instruments);
                 const busy = busyId === member.applicationId;
                 return (

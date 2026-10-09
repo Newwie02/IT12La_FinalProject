@@ -47,13 +47,14 @@ export default function BottomNav({
   }, []);
 
   const isClientRole = role === "client" || role === "organizer";
+  const isBandRole = role === "band";
 
   const routes = {
-    home: isClientRole ? "/dashboard-client" : homeRoute,
+    home: isClientRole ? "/dashboard-client" : isBandRole ? "/dashboard-band" : homeRoute,
     discover: "/discover",
     gigs: "/gig-posting",
     messages: "/messages",
-    profile: isClientRole ? "/profile-client" : profileRoute,
+    profile: isClientRole ? "/profile-client" : isBandRole ? "/profile-band" : profileRoute,
   };
 
   const items = showGigs ? NAV_ITEMS : NAV_ITEMS.filter((item) => item.key !== "gigs");

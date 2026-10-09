@@ -4,7 +4,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyProfile, clearToken } from "../api";
+import { getMyProfile, clearToken, resolveUrl } from "../api";
 
 // GigMatch — Client / Event Organizer profile screen (your own profile)
 // Route: app/profile-client.jsx  →  "/profile-client"
@@ -47,7 +47,7 @@ export default function ProfileClient() {
   const fullName = me?.name ?? params.fullName;
 
   // Only real server URLs can be shown; blob:/file: paths are skipped
-  const photo = me?.photoUrl;
+  const photo = resolveUrl(me?.photoUrl);
   const showPhoto = photo && /^https?:\/\//.test(photo) && !photoFailed;
 
   const isOrganizer = me?.role === "organizer" || params.role === "organizer";

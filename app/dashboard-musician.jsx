@@ -18,9 +18,14 @@ import {
   getMusicians,
   getMyBand,
   getBands,
+  getMe,
   getMyApplications,
   getReceivedApplications,
   getNotifications,
+  getBookings,
+  getMyGigApplications,
+  getMyInvitations,
+  leaveBand,
   resolveUrl,
 } from "../api";
 
@@ -29,13 +34,11 @@ import {
 // "Fellow musician" now loads REAL musicians from the backend (GET /api/users/musicians)
 // and "View Profile" opens /musician-profile with the real user id.
 
-const PLACEHOLDER_REMINDER = {
-  date: "Sat, Oct 18 · 6:00 PM",
-  status: "Confirmed",
-  title: "Wedding Reception — Live Set",
-  location: "Visayan Village, Tagum",
-  price: "₱17,000",
-};
+function formatPay(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const n = Number(String(value).replace(/[^0-9.]/g, ""));
+  return isNaN(n) ? String(value) : `₱${n.toLocaleString("en-PH")}`;
+}
 
 const PLACEHOLDER_STATUS = [
   { key: "active", label: "Active status", value: "Online" },
@@ -65,6 +68,10 @@ export default function DashboardMusician() {
   const [pendingCount, setPendingCount] = useState(0); // applications waiting for MY band
   const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell)
   const [isSwitching, setIsSwitching] = useState(false); // overlay while switching to the band dashboard
+  const [me, setMe] = useState(null); // signed-in user (header avatar)
+  const [bookings, setBookings] = useState([]); // accepted gigs (mine + my band's)
+  const [myGigApps, setMyGigApps] = useState([]); // gig applications I've sent
+  const [invites, setInvites] = useState([]); // band leaders' invitations to me
 
   // Re-check every time this screen comes into view (e.g. after creating a band)
   useFocusEffect(
@@ -95,17 +102,31 @@ export default function DashboardMusician() {
         getMyApplications().catch(() => []),
         getReceivedApplications().catch(() => []),
         getNotifications().catch(() => []),
+        getMe().catch(() => null),
+        // Real bookings + my sent gig applications (for Upcoming gig / Booking / Pending)
+        getBookings().catch(() => []),
+        getMyGigApplications().catch(() => []),
+        // Invitations from band leaders (Hire from a profile lands here)
+        getMyInvitations().catch(() => []),
       ])
-        .then(([allBands, mine, received, notifications]) => {
+        .then(([allBands, mine, received, notifications, meUser, bookingRows, gigApps, inviteRows]) => {
           if (!active) return;
           setBands(allBands);
+          setMe(meUser);
+          setBookings(Array.isArray(bookingRows) ? bookingRows : []);
+          setMyGigApps(Array.isArray(gigApps) ? gigApps : []);
+          setInvites(Array.isArray(inviteRows) ? inviteRows : []);
           setUnreadCount(notifications.filter((n) => !n.isRead).length);
           const map = {};
           mine.forEach((a) => {
             map[a.bandId] = a.status;
           });
           setApplicationStatus(map);
-          setPendingCount(received.filter((a) => a.status === "pending").length);
+          // "Musicians waiting for your answer" = applications TO my band,
+          // not the invitations I sent out myself (those await their reply)
+          setPendingCount(
+            received.filter((a) => a.status === "pending" && a.invitedBy !== "band").length
+          );
         })
         .catch(() => {
           if (active) setBands([]);
@@ -160,6 +181,62 @@ export default function DashboardMusician() {
     PLACEHOLDER_STATUS[1],
   ];
 
+  // --- Real bookings + pending gig applications --------------------------
+  const dayAnchor = new Date();
+  const todayStart = new Date(dayAnchor.getFullYear(), dayAnchor.getMonth(), dayAnchor.getDate());
+  // Booked gigs that haven't happened yet (server sorts soonest-first)
+  const upcomingBookings = bookings.filter((b) => {
+    if (!b.gig || b.gig.status !== "booked") return false;
+    if (!b.gig.date) return true;
+    return new Date(b.gig.date) >= todayStart;
+  });
+  const nextGig = upcomingBookings[0] ?? null;
+  const nextGigDate = nextGig?.gig?.date ? new Date(nextGig.gig.date) : null;
+  const nextGigValid = !!nextGigDate && !isNaN(nextGigDate.getTime());
+  // Gig applications I sent that the client hasn't answered yet
+  const pendingGigCount = myGigApps.filter((a) => a.status === "pending").length;
+  // Band invitations waiting for my accept / decline
+  const pendingInvites = invites.filter((i) => i.status === "pending");
+
+  // Leave the band if it's not the right fit (membership is always my choice)
+  const confirmLeaveBand = () => {
+    const bandName = memberBand?.name ?? myBand?.name ?? "the band";
+    Alert.alert(
+      `Leave ${bandName}?`,
+      "You'll no longer be a member of this band. You can join or create another band anytime.",
+      [
+        { text: "Stay", style: "cancel" },
+        {
+          text: "Leave band",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await leaveBand();
+              // Remount the dashboard so every band/member state refetches
+              router.replace({ pathname: "/dashboard-musician", params: carryParams });
+            } catch (err) {
+              Alert.alert("Couldn't leave", err.message || "Something went wrong.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Opens one of my bookings — the gig detail shows the booked state
+  const openBooking = (b) => {
+    router.push({
+      pathname: "/gig-detail",
+      params: {
+        id: b.gig.id,
+        posterName: b.gig.postedBy?.name ?? "Client",
+        location: b.gig.location ?? "",
+        price: b.gig.pay ?? "",
+        description: b.gig.description ?? "",
+      },
+    });
+  };
+
   // Avatar tap: only accounts with a band can switch to the band dashboard
   const handleSwitchDashboard = () => {
         if (!bandChecked) return;
@@ -179,7 +256,7 @@ export default function DashboardMusician() {
         params: {
           ...carryParams,
                  bandName: bandToOpen.name ?? "",
-          bandPhotoUri: bandToOpen.photoUrl ?? "",
+          bandPhotoUri: resolveUrl(bandToOpen.photoUrl) ?? "",
           bandDescription: bandToOpen.bio ?? "",
           bandLocation: bandToOpen.location ?? "",
           primaryGenres: bandToOpen.genre ?? "",
@@ -239,7 +316,11 @@ export default function DashboardMusician() {
           <View style={styles.headerRow}>
             <Pressable onPress={handleSwitchDashboard} style={styles.avatarWrap}>
               <View style={styles.avatar}>
-                <Ionicons name="person" size={20} color="#7c3aed" />
+                {resolveUrl(me?.photoUrl) ? (
+                  <Image source={{ uri: resolveUrl(me.photoUrl) }} style={styles.avatarImage} />
+                ) : (
+                  <Ionicons name="person" size={20} color="#7c3aed" />
+                )}
               </View>
             </Pressable>
             <View style={styles.headerText}>
@@ -268,27 +349,93 @@ export default function DashboardMusician() {
           </Text>
         </BlurView>
 
-        {/* Reminder */}
+        {/* Upcoming gig — the next gig you were booked for (tap to open) */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Reminder</Text>
-          <LinearGradient
-            colors={["#8b5cf6", "#d946ef"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.reminderCard}
-          >
-            <View style={styles.reminderTopRow}>
-              <Text style={styles.reminderDate}>{PLACEHOLDER_REMINDER.date}</Text>
-              <View style={styles.confirmedBadge}>
-                <Text style={styles.confirmedBadgeText}>{PLACEHOLDER_REMINDER.status}</Text>
-              </View>
-            </View>
-            <Text style={styles.reminderTitle}>{PLACEHOLDER_REMINDER.title}</Text>
-            <Text style={styles.reminderMeta}>
-              {PLACEHOLDER_REMINDER.location} · {PLACEHOLDER_REMINDER.price}
-            </Text>
-          </LinearGradient>
+          <Text style={styles.sectionLabel}>Upcoming gig</Text>
+          {nextGig ? (
+            <Pressable onPress={() => openBooking(nextGig)}>
+              <LinearGradient
+                colors={["#8b5cf6", "#d946ef"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.reminderCard}
+              >
+                <View style={styles.reminderTopRow}>
+                  <Text style={styles.reminderDate}>
+                    {nextGigValid
+                      ? nextGigDate.toLocaleString("en-US", {
+                          weekday: "short",
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : "Date to be confirmed"}
+                  </Text>
+                  <View style={styles.confirmedBadge}>
+                    <Text style={styles.confirmedBadgeText}>Booked</Text>
+                  </View>
+                </View>
+                <Text style={styles.reminderTitle}>{nextGig.gig.title}</Text>
+                <Text style={styles.reminderMeta}>
+                  {[nextGig.gig.location, formatPay(nextGig.gig.pay)].filter(Boolean).join(" · ")}
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          ) : (
+            <LinearGradient
+              colors={["#8b5cf6", "#d946ef"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.reminderCard}
+            >
+              <Text style={styles.reminderTitle}>No upcoming gigs</Text>
+              <Text style={styles.reminderMeta}>
+                Apply to open gigs in Discover — once a client books you, the gig shows up here.
+              </Text>
+            </LinearGradient>
+          )}
         </View>
+
+        {/* Booking / Pending — real counts from the backend */}
+        <View style={styles.statsRow}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => router.push({ pathname: "/my-gigs", params: { tab: "bookings" } })}
+          >
+            <Text style={styles.statValue}>{upcomingBookings.length}</Text>
+            <Text style={styles.statLabel}>Booking</Text>
+          </Pressable>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => router.push({ pathname: "/my-gigs", params: { tab: "applications" } })}
+          >
+            <Text style={styles.statValue}>{pendingGigCount}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+          </Pressable>
+        </View>
+
+        {/* Band invitations — a leader hired you from your profile (tap to answer) */}
+        {pendingInvites.length > 0 ? (
+          <Pressable
+            onPress={() => router.push("/band-invitations")}
+            style={styles.applicationsCard}
+          >
+            <Ionicons name="person-add" size={20} color="#7c3aed" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.applicationsTitle}>Band invitations</Text>
+              <Text style={styles.applicationsSub}>
+                {pendingInvites.length === 1
+                  ? `${pendingInvites[0].band?.name ?? "A band"} invited you to join`
+                  : `${pendingInvites.length} bands invited you to join`}
+              </Text>
+            </View>
+            <View style={styles.applicationsBadge}>
+              <Text style={styles.applicationsBadgeText}>{pendingInvites.length}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#7c3aed" />
+          </Pressable>
+        ) : null}
 
         {/* Tags */}
         <View style={styles.tagRow}>
@@ -346,6 +493,10 @@ export default function DashboardMusician() {
             <Text style={styles.memberText}>
               You're a member of {memberBand?.name ?? "a band"}. A musician can only be in one band.
             </Text>
+            <Pressable onPress={confirmLeaveBand} style={styles.leaveButton} hitSlop={6}>
+              <Ionicons name="exit-outline" size={14} color="#dc2626" />
+              <Text style={styles.leaveButtonText}>Leave band</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -538,7 +689,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(124,58,237,0.12)",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  avatarImage: { width: "100%", height: "100%" },
   headerText: { flex: 1 },
   headerTitle: { color: "#111827", fontSize: 16, fontWeight: "700" },
   headerSubtitle: { color: "#6b7280", fontSize: 13, marginTop: 2 },
@@ -572,6 +725,19 @@ const styles = StyleSheet.create({
   confirmedBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
   reminderTitle: { color: "#fff", fontSize: 17, fontWeight: "700", marginBottom: 4 },
   reminderMeta: { color: "rgba(255,255,255,0.85)", fontSize: 13 },
+
+  statsRow: { flexDirection: "row", gap: 8, marginBottom: 20 },
+  statCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  statValue: { color: "#111827", fontSize: 18, fontWeight: "700" },
+  statLabel: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
 
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   tagChip: {
@@ -697,6 +863,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   memberText: { flex: 1, color: "#166534", fontSize: 12, lineHeight: 17 },
+  leaveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.35)",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  leaveButtonText: { color: "#dc2626", fontSize: 11, fontWeight: "700" },
 
   applicationsCard: {
     flexDirection: "row",

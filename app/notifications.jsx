@@ -208,6 +208,9 @@ export default function Notifications() {
         ) : (
           notifications.map((n) => {
             const look = styleFor(n.type);
+
+
+            
             return (
               <View key={String(n.id)} style={[styles.card, !n.isRead && styles.cardUnread]}>
                 <Pressable

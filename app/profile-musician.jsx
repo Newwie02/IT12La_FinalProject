@@ -4,7 +4,7 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyProfile, clearToken } from "../api";
+import { getMyProfile, clearToken, resolveUrl } from "../api";
 
 // GigMatch — Musician profile screen (your own profile)
 // Route: app/profile-musician.jsx  →  "/profile-musician"
@@ -14,10 +14,6 @@ import { getMyProfile, clearToken } from "../api";
 
 const MENU_ITEMS = [
   { key: "edit", icon: "create-outline", label: "Edit Profile", route: "/edit-profile" },
-  { key: "account", icon: "settings-outline", label: "Account Settings", route: "/account-settings" },
-  { key: "availability", icon: "calendar-outline", label: "Availability Calendar", route: "/availability-calendar" },
-  { key: "payment", icon: "card-outline", label: "Payment Method", route: "/payment-method" },
-  { key: "id", icon: "shield-checkmark-outline", label: "ID Verification", route: "/id-verification" },
   { key: "ratings", icon: "star-outline", label: "Ratings Review", route: "/ratings-review" },
 ];
 
@@ -58,13 +54,13 @@ export default function ProfileMusician() {
   const genreTags = toList(me?.genres ?? params.genres);
 
   // Only real server URLs can be shown; blob:/file: paths are skipped
-  const photo = me?.photoUrl;
+  const photo = resolveUrl(me?.photoUrl);
   const showPhoto = photo && /^https?:\/\//.test(photo) && !photoFailed;
 
   const resolvedName = fullName?.trim() ? fullName.trim() : "Your name";
-  const resolvedHeadline = me?.stageName?.trim()
-    ? me.stageName.trim()
-    : instrumentTags[0] || "Musician";
+  // Full name is the identity line above — the stage name isn't shown,
+  // so the headline carries the first instrument instead.
+  const resolvedHeadline = instrumentTags[0] || "Musician";
   const resolvedLocation = me?.barangay?.trim() ? me.barangay.trim() : "Location not set";
   const resolvedGender = me?.gender?.trim() ? me.gender.trim() : "Not specified";
   const resolvedBirthday = formatBirthday(me?.birthday) ?? "Not set";

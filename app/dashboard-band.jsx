@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyBand, getGigs, getMusicians, getReceivedApplications, getBandMembers, getNotifications, getMe, resolveUrl } from "../api";
+import { getMyBand, getGigs, getMusicians, getReceivedApplications, getBandMembers, getNotifications, getMe, getReceivedRatings, getBookings, getMyGigApplications, resolveUrl } from "../api";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
@@ -23,6 +23,21 @@ function currentMonthYear() {
   return new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
+// "just now", "12m ago", "3h ago", "2d ago", "Oct 3"
+function timeAgo(value) {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  const s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export default function DashboardBand() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -34,14 +49,14 @@ export default function DashboardBand() {
     const [acceptedApplications, setAcceptedApplications] = useState(0);
 const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell)
   const [memberCount, setMemberCount] = useState(1);
+  const [ratingAvg, setRatingAvg] = useState(null); // average clients gave this band
+  const [recentRatings, setRecentRatings] = useState([]); // latest 3 for the dashboard
+  const [bookings, setBookings] = useState([]); // accepted gigs (mine + the band's)
+  const [pendingGigs, setPendingGigs] = useState(0); // my gig applications awaiting the client's answer
   const [myId, setMyId] = useState(null); // logged-in user id (for the "my gigs" count)
    const isLeader = band ? band.isLeader !== false : params.isLeader !== "false";
 
   useEffect(() => {
-    getMyBand()
-      .then(setBand)
-      .catch((e) => console.log("getMyBand error:", e.message));
-
     getMe()
       .then((u) => setMyId(u?.id ?? null))
       .catch((e) => console.log("getMe error:", e.message));
@@ -81,6 +96,21 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
       .catch((e) => console.log("getMusicians error:", e.message));
   }, []);
 
+  // Band info refetches on focus so photo/name edits show up right away
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getMyBand()
+        .then((b) => {
+          if (active) setBand(b);
+        })
+        .catch((e) => console.log("getMyBand error:", e.message));
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
   // Applications from musicians: re-check every time this screen comes into view
   useFocusEffect(
     useCallback(() => {
@@ -106,6 +136,34 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
         .catch(() => {
           if (active) setUnreadCount(0);
         });
+
+      // Ratings clients gave this band — refetched on focus so a fresh
+      // rating shows up the moment the client submits it
+      getReceivedRatings()
+        .then((res) => {
+          if (!active) return;
+          setRatingAvg(res?.average ?? null);
+          setRecentRatings((Array.isArray(res?.ratings) ? res.ratings : []).slice(0, 3));
+        })
+        .catch(() => {});
+
+      // Booked gigs — mine + (for members) the band leader's, so the whole
+      // band sees the same upcoming gig on the dashboard
+      getBookings()
+        .then((list) => {
+          if (active) setBookings(Array.isArray(list) ? list : []);
+        })
+        .catch(() => {});
+
+      // Gig applications I sent that the client hasn't answered yet (Pending)
+      getMyGigApplications()
+        .then((list) => {
+          if (active)
+            setPendingGigs(
+              (Array.isArray(list) ? list : []).filter((a) => a.status === "pending").length
+            );
+        })
+        .catch(() => {});
       return () => {
         active = false; 
       };
@@ -113,12 +171,32 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
   );
 
   const bandName = band?.name ?? params.bandName;
-  const bandPhotoUri = resolveUrl(band?.photoUrl) ?? params.bandPhotoUri;
+  // Params carry a photoUrl too (possibly with a stale IP) → resolve both.
+  const bandPhotoUri = resolveUrl(band?.photoUrl || params.bandPhotoUri || null);
 
   const resolvedBandName = bandName?.trim() ? bandName.trim() : "Your band";
 
+  // --- Upcoming bookings (from GET /gig-applications/bookings) -----------
+  // Booked gigs that haven't happened yet (server sorts soonest-first)
+  const nowForDay = new Date();
+  const todayStart = new Date(nowForDay.getFullYear(), nowForDay.getMonth(), nowForDay.getDate());
+  const upcomingBookings = bookings.filter((b) => {
+    if (!b.gig || b.gig.status !== "booked") return false;
+    if (!b.gig.date) return true;
+    return new Date(b.gig.date) >= todayStart;
+  });
+  const nextGig = upcomingBookings[0] ?? null;
+  const nextGigDate = nextGig?.gig?.date ? new Date(nextGig.gig.date) : null;
+  const nextGigValid = !!nextGigDate && !isNaN(nextGigDate.getTime());
+
   // Members = you (the leader) + every musician you accepted
-    const stats = { bookings: 0, pending: 0, members: memberCount, rating: "0.0" };
+  const stats = {
+    bookings: upcomingBookings.length,
+    pending: pendingGigs,
+    members: memberCount,
+    // Real average of what clients rated this band ("0.0" until the first rating)
+    rating: ratingAvg != null ? ratingAvg.toFixed(1) : "0.0",
+  };
   const [isSwitching, setIsSwitching] = useState(false);
   const { AlertModal } = useAppAlert();
 
@@ -128,7 +206,7 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
     setTimeout(() => {
       router.push({
         pathname: "/dashboard-musician",
-        params: { fullName, instruments, genres, bandName, bandPhotoUri },
+        params: { fullName, instruments, genres, bandName, bandPhotoUri: bandPhotoUri || "" },
       });
       setIsSwitching(false);
     }, 700);
@@ -144,6 +222,20 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
         location: gig.location,
         price: gig.price,
         description: gig.description,
+      },
+    });
+  };
+
+  // Opens one of my band's bookings — the gig detail shows the booked state
+  const openBooking = (b) => {
+    router.push({
+      pathname: "/gig-detail",
+      params: {
+        id: b.gig.id,
+        posterName: b.gig.postedBy?.name ?? "Client",
+        location: b.gig.location ?? "",
+        price: b.gig.pay ?? "",
+        description: b.gig.description ?? "",
       },
     });
   };
@@ -233,31 +325,73 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
           </LinearGradient>
         </Pressable>
 
-        {/* Upcoming gig */}
+        {/* Upcoming gig — the next booked event (or the empty state) */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Upcoming gig</Text>
-          <LinearGradient
-            colors={["#8b5cf6", "#d946ef"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.upcomingCard}
-          >
-            <Text style={styles.upcomingMonth}>{currentMonthYear()}</Text>
-            <Text style={styles.upcomingTitle}>No Upcoming Gigs</Text>
-            <Text style={styles.upcomingSubtitle}>You currently have no upcoming gigs.</Text>
-          </LinearGradient>
+          {nextGig ? (
+            <Pressable onPress={() => openBooking(nextGig)}>
+              <LinearGradient
+                colors={["#8b5cf6", "#d946ef"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.upcomingCard}
+              >
+                <Text style={styles.upcomingMonth}>
+                  {nextGigValid
+                    ? nextGigDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+                    : currentMonthYear()}
+                </Text>
+                <Text style={styles.upcomingTitle}>{nextGig.gig.title}</Text>
+                <Text style={styles.upcomingSubtitle}>
+                  {[
+                    nextGigValid
+                      ? nextGigDate.toLocaleDateString("en-US", {
+                          weekday: "short", month: "short", day: "numeric",
+                        })
+                      : "Date to be confirmed",
+                    nextGig.gig.location,
+                    nextGig.gig.postedBy?.name ? `with ${nextGig.gig.postedBy.name}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+                {upcomingBookings.length > 1 ? (
+                  <Text style={styles.upcomingMore}>
+                    +{upcomingBookings.length - 1} more upcoming {upcomingBookings.length - 1 === 1 ? "gig" : "gigs"}
+                  </Text>
+                ) : null}
+              </LinearGradient>
+            </Pressable>
+          ) : (
+            <LinearGradient
+              colors={["#8b5cf6", "#d946ef"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.upcomingCard}
+            >
+              <Text style={styles.upcomingMonth}>{currentMonthYear()}</Text>
+              <Text style={styles.upcomingTitle}>No Upcoming Gigs</Text>
+              <Text style={styles.upcomingSubtitle}>You currently have no upcoming gigs.</Text>
+            </LinearGradient>
+          )}
         </View>
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => router.push({ pathname: "/my-gigs", params: { tab: "bookings" } })}
+          >
             <Text style={styles.statValue}>{stats.bookings}</Text>
             <Text style={styles.statLabel}>Booking</Text>
-          </View>
-          <View style={styles.statCard}>
+          </Pressable>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => router.push({ pathname: "/my-gigs", params: { tab: "applications" } })}
+          >
             <Text style={styles.statValue}>{stats.pending}</Text>
             <Text style={styles.statLabel}>Pending</Text>
-          </View>
+          </Pressable>
           <Pressable style={styles.statCard} onPress={() => router.push("/band-members")}>
             <Text style={styles.statValue}>{stats.members}</Text>
             <Text style={styles.statLabel}>Member</Text>
@@ -291,6 +425,52 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
                </Pressable>
         ) : null}
+
+        {/* Ratings from clients — latest 3, full list in Ratings Review */}
+        <View style={styles.ratingsSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Ratings from clients</Text>
+            {recentRatings.length > 0 ? (
+              <Pressable onPress={() => router.push("/ratings-review")}>
+                <Text style={styles.seeAll}>See all</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {recentRatings.length === 0 ? (
+            <BlurView intensity={40} tint="light" style={styles.ratingEmptyCard}>
+              <Ionicons name="star-outline" size={20} color={PURPLE} />
+              <Text style={styles.ratingEmptyText}>
+                No ratings yet — clients rate your band after a gig is done.
+              </Text>
+            </BlurView>
+          ) : (
+            recentRatings.map((r) => (
+              <BlurView key={r.id} intensity={40} tint="light" style={styles.ratingRow}>
+                <View style={styles.ratingIcon}>
+                  <Ionicons name="star" size={16} color="#f59e0b" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ratingTitle} numberOfLines={1}>
+                    {r.rater?.name ?? "A client"}
+                    {r.gig?.title ? ` · ${r.gig.title}` : ""}
+                  </Text>
+                  <View style={styles.ratingStarRow}>
+                    <Text style={styles.ratingStarText}>
+                      {"★".repeat(r.stars)}
+                      {"☆".repeat(Math.max(0, 5 - r.stars))}
+                    </Text>
+                    {r.comment ? (
+                      <Text style={styles.ratingComment} numberOfLines={1}>
+                        “{r.comment}”
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <Text style={styles.ratingTime}>{timeAgo(r.createdAt)}</Text>
+              </BlurView>
+            ))
+          )}
+        </View>
 
         {/* Gig Posting */}
         <View style={styles.sectionHeaderRow}>
@@ -388,7 +568,7 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
 
       <BottomNav
         homeRoute="/dashboard-band"
-        profileRoute="/profile-musician"
+        profileRoute="/profile-band"
         params={{ fullName, instruments, genres, bandName: resolvedBandName, bandPhotoUri }}
       />
       {AlertModal}
@@ -480,6 +660,7 @@ const styles = StyleSheet.create({
   upcomingMonth: { color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: "600", marginBottom: 8 },
   upcomingTitle: { color: "#fff", fontSize: 19, fontWeight: "700", marginBottom: 4 },
   upcomingSubtitle: { color: "rgba(255,255,255,0.85)", fontSize: 13 },
+  upcomingMore: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "600", marginTop: 8 },
 
   statsRow: { flexDirection: "row", gap: 8, marginBottom: 20 },
   statCard: {
@@ -517,6 +698,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   applicationsBadgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+
+  /* Ratings from clients */
+  ratingsSection: { marginBottom: 12 },
+  ratingEmptyCard: {
+    flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 16,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.05)", backgroundColor: "rgba(255,255,255,0.7)",
+    padding: 14,
+  },
+  ratingEmptyText: { color: "#6b7280", fontSize: 12, flex: 1 },
+  ratingRow: {
+    flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 16,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.05)", overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.7)", padding: 12, marginBottom: 8,
+  },
+  ratingIcon: {
+    height: 34, width: 34, borderRadius: 17, backgroundColor: "rgba(245,158,11,0.14)",
+    alignItems: "center", justifyContent: "center",
+  },
+  ratingTitle: { color: "#111827", fontSize: 12.5, fontWeight: "700" },
+  ratingStarRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  ratingStarText: { color: "#f59e0b", fontSize: 11, fontWeight: "700" },
+  ratingComment: { color: "#6b7280", fontSize: 11, flexShrink: 1 },
+  ratingTime: { color: "#9ca3af", fontSize: 10, fontWeight: "600" },
 
   sectionHeaderRow: {
     flexDirection: "row",

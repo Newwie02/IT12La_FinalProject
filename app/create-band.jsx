@@ -198,25 +198,10 @@ export default function CreateBand() {
 
 const [saving, setSaving] = useState(false);
 
-const handleFinish = async () => {
-  if (!canFinish) {
-    showAlert({
-      icon: "alert-circle",
-      tone: "warning",
-      title: "Almost there",
-      message: "Pick at least one primary genre and at least one instrument.",
-    });
-    return;
-  }
-
-   setSaving(true);
+// The actual band creation, run once we have a usable photo URL (possibly "")
+const finishCreate = async (photoUrl) => {
+  setSaving(true);
   try {
-    // Upload first so we save a real URL, not a blob:/file: path
-    let photoUrl = "";
-    if (photoUri) {
-      photoUrl = /^https?:\/\//.test(photoUri) ? photoUri : await uploadPhoto(photoUri);
-    }
-
     await createBand({
       name: bandName.trim(),
       genre: primaryGenres.join(", "),
@@ -271,6 +256,57 @@ const handleFinish = async () => {
     });
   } finally {
     setSaving(false);
+  }
+};
+
+const handleFinish = async () => {
+  if (!canFinish) {
+    showAlert({
+      icon: "alert-circle",
+      tone: "warning",
+      title: "Almost there",
+      message: "Pick at least one primary genre and at least one instrument.",
+    });
+    return;
+  }
+
+  setSaving(true);
+  try {
+    // Upload first so we save a real URL, not a blob:/file: path
+    let photoUrl = "";
+    if (photoUri) {
+      if (/^https?:\/\//.test(photoUri)) {
+        photoUrl = photoUri;
+      } else {
+        try {
+          photoUrl = await uploadPhoto(photoUri);
+        } catch (photoErr) {
+          // A broken picked file shouldn't block creating the band itself —
+          // let the user continue without the photo.
+          setSaving(false);
+          showAlert({
+            icon: "image",
+            tone: "warning",
+            title: "Couldn't upload band photo",
+            message: `${photoErr.message} You can still create your band without a photo.`,
+            buttons: [
+              { label: "Cancel", style: "secondary" },
+              { label: "Create without photo", onPress: () => finishCreate("") },
+            ],
+          });
+          return;
+        }
+      }
+    }
+    await finishCreate(photoUrl);
+  } catch (err) {
+    setSaving(false);
+    showAlert({
+      icon: "alert-circle",
+      tone: "warning",
+      title: "Couldn't create band",
+      message: err.message || "Something went wrong. Please try again.",
+    });
   }
 };
 

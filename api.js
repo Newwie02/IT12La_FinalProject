@@ -8,9 +8,14 @@ export const SERVER_URL = `http://${host ?? "192.168.100.15"}:5000`; // no /api
 const BASE_URL = `${SERVER_URL}/api`;
 
 // Turns "/uploads/abc.jpg" into a full URL the phone can load.
+// Stored photo URLs bake in whatever LAN IP existed at upload time
+// (e.g. http://192.168.1.35:5000/uploads/x.jpg), which breaks the moment the
+// machine's IP changes — so ANY /uploads/ URL is rebuilt on the CURRENT host.
 export function resolveUrl(path) {
-  if (!path) return null;
-  if (/^(https?:|file:|data:)/.test(path)) return path;
+  if (!path || typeof path !== "string") return null;
+  const upload = path.match(/^(?:https?:\/\/[^/]+)?(\/uploads\/[^?#]+)(\?.*)?$/i);
+  if (upload) return `${SERVER_URL}${upload[1]}${upload[2] || ""}`;
+  if (/^(https?:|file:|data:|content:)/.test(path)) return path;
   return `${SERVER_URL}${path}`;
 }
 
@@ -127,23 +132,79 @@ export function changePassword({ currentPassword, newPassword }) {
 
 // Uploads a picked image to the server and returns its public URL.
 export async function uploadPhoto(uri) {
-  const blob = await (await fetch(uri)).blob();
+  // A pre-filled http(s) photo URL (e.g. edit screens where the user didn't
+  // change the picture) — nothing to upload, keep it as-is.
+  if (/^https?:\/\//.test(uri)) return uri;
+
+  const ext = (uri.split("?")[0].split(".").pop() || "jpg").toLowerCase();
+  const name = `photo.${ext === "jpeg" ? "jpg" : ext}`;
+  const type =
+    ext === "png"
+      ? "image/png"
+      : ext === "webp"
+        ? "image/webp"
+        : ext === "heic" || ext === "heif"
+          ? "image/heic"
+          : "image/jpeg";
 
   const form = new FormData();
-  form.append("photo", blob, "photo.jpg");
+
+  if (Platform.OS === "web") {
+    // Web has to read the file into a Blob first. Some devices answer a
+    // fetch of a gone file with a tiny "File not found" text body instead
+    // of throwing — never upload that.
+    let res;
+    try {
+      res = await fetch(uri);
+    } catch {
+      throw new Error("Couldn't read the selected photo. Please pick it again.");
+    }
+    if (res && res.ok === false) {
+      throw new Error("Couldn't read the selected photo (it may have been moved). Please pick it again.");
+    }
+    const blob = await res.blob();
+    if (!blob || !blob.size || blob.size < 100) {
+      throw new Error("The selected photo came through empty. Please pick it again.");
+    }
+    form.append("photo", blob, name);
+  } else if (typeof form.entries === "function") {
+    // Expo SDK 57's fetch (the "winter" fetch) serializes FormData in JS and
+    // REJECTS React Native's { uri } file parts with
+    // "Unsupported FormDataPart implementation" — that's what used to kill
+    // step 3 of the profile setup. Send the file's real bytes instead
+    // (the { bytes(), name, type } shape Expo documents for it).
+    let bytes;
+    try {
+      const { File } = await import("expo-file-system");
+      bytes = await new File(uri).bytes();
+    } catch {
+      throw new Error("Couldn't read the selected photo. Please pick it again.");
+    }
+    if (!bytes || bytes.length < 100) {
+      throw new Error("The selected photo came through empty. Please pick it again.");
+    }
+    form.append("photo", { bytes: async () => bytes, name, type });
+  } else {
+    // Runtimes still on React Native's own XHR fetch stream the picked
+    // file straight from its uri.
+    form.append("photo", { uri, name, type });
+  }
 
   const token = await getToken();
-  const res = await fetch(`${BASE_URL}/upload`, {
+  const uploadRes = await fetch(`${BASE_URL}/upload`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` }, // don't set Content-Type here
     body: form,
   });
 
-  const text = await res.text();
+  const text = await uploadRes.text();
   let data = {};
   try { data = JSON.parse(text); } catch {}
-  if (!res.ok) {
-    throw new Error(data.message || `Upload failed (${res.status}): ${text.slice(0, 120)}`);
+  if (!uploadRes.ok) {
+    throw new Error(data.message || `Upload failed (${uploadRes.status}): ${text.slice(0, 120)}`);
+  }
+  if (!data.url) {
+    throw new Error("The upload didn't return a photo URL. Please try again.");
   }
   return data.url;
 }
@@ -172,6 +233,11 @@ export async function getMyBand() {
     if (err.message === "No band yet") return null;
     throw err;
   }
+}
+
+// Leader edits their own band (photo, name, bio, location, primary genres)
+export function updateMyBand(fields) {
+  return request("/bands/me", { method: "PUT", auth: true, body: fields });
 }
 
 // Extra band info (type, secondary genres, event types, songs...) — leader saves it after creating the band
@@ -205,6 +271,21 @@ export function respondToApplication(id, status) {
   return request(`/applications/${id}`, { method: "PATCH", auth: true, body: { status } });
 }
 
+// Band leader hires a solo musician: sends an invitation they can accept/reject
+export function inviteMusician({ userId, message }) {
+  return request("/applications/invite", { method: "POST", auth: true, body: { userId, message } });
+}
+
+// Invitations sent to ME by band leaders (with band + leader info)
+export function getMyInvitations() {
+  return request("/applications/invites", { auth: true });
+}
+
+// Musician leaves the band they're a member of
+export function leaveBand() {
+  return request("/applications/leave", { method: "POST", auth: true });
+}
+
 // --- Band members (band leader) ---
 export function getBandMembers() {
   return request("/applications/members", { auth: true });
@@ -231,9 +312,16 @@ export function getReceivedGigApplications() {
   return request("/gig-applications/received", { auth: true });
 }
 
-// Gig poster accepts or rejects: status is "accepted" or "rejected"
+// Gig poster accepts or rejects: status is "accepted" or "rejected".
+// Accepting BOOKS the gig: the gig leaves Discover and every other
+// application is auto-closed (server returns 409 if it was already filled).
 export function respondToGigApplication(id, status) {
   return request(`/gig-applications/${id}`, { method: "PATCH", auth: true, body: { status } });
+}
+
+// Accepted bookings for the band dashboard: mine + (if I'm a member) my band's
+export function getBookings() {
+  return request("/gig-applications/bookings", { auth: true });
 }
 
 // --- Ratings ---
@@ -279,8 +367,13 @@ export function markAllNotificationsRead() {
 }
 
 // --- Gigs ---
-export function getGigs() {
-  return request("/gigs");
+// Only open gigs are listed — plus the caller's own gigs in any status
+// (booked / cancelled / completed), so "My gigs" stays complete.
+// poster = "band" → only OPEN gigs posted by band owners (client Discover).
+export function getGigs(poster) {
+  return request(`/gigs${poster ? `?poster=${encodeURIComponent(poster)}` : ""}`, {
+    auth: true,
+  });
 }
 
 export function getGigById(id) {
@@ -293,6 +386,12 @@ export function createGig({ title, description, location, date, pay }) {
     auth: true,
     body: { title, description, location, date, pay },
   });
+}
+
+// Cancel an open gig, or a booking (client cancels / band backs out).
+// The booking falls apart → the gig returns to Discover.
+export function cancelGig(id, reason) {
+  return request(`/gigs/${id}/cancel`, { method: "PATCH", auth: true, body: { reason } });
 }
 
 // --- Messages ---

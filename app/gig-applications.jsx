@@ -65,7 +65,9 @@ export default function GigApplications() {
     setBusyId(appId);
     try {
       await respondToGigApplication(appId, status);
-      setApps((prev) => prev.map((a) => (a.id === appId ? { ...a, status } : a)));
+      // Re-fetch: accepting books the gig and auto-closes every other
+      // application ("gig filled"), so local patching isn't enough.
+      await load();
     } catch (e) {
       Alert.alert("Couldn't update", e.message || "Something went wrong.");
     } finally {
@@ -256,26 +258,9 @@ export default function GigApplications() {
                         </View>
                       ) : null}
 
-                      {/* Accepted → rate the performance (1-5 stars + comment) */}
+                      {/* Accepted → message the performer + rate the performance */}
                       {a.status === "accepted" ? (
-                        given[a.id] ? (
-                          <View style={styles.ratedBox}>
-                            <View style={styles.starsRow}>
-                              {[1, 2, 3, 4, 5].map((n) => (
-                                <Ionicons
-                                  key={n}
-                                  name={n <= given[a.id].stars ? "star" : "star-outline"}
-                                  size={16}
-                                  color={n <= given[a.id].stars ? "#f59e0b" : "#d1d5db"}
-                                />
-                              ))}
-                              <Text style={styles.ratedLabel}>You rated {given[a.id].stars}/5</Text>
-                            </View>
-                            {given[a.id].comment ? (
-                              <Text style={styles.ratedComment}>“{given[a.id].comment}”</Text>
-                            ) : null}
-                          </View>
-                        ) : ratingFor === a.id ? (
+                        ratingFor === a.id ? (
                           <View style={styles.rateBox}>
                             <Text style={styles.rateTitle}>Rate this performance</Text>
                             <View style={styles.starPickerRow}>
@@ -324,15 +309,54 @@ export default function GigApplications() {
                             </View>
                           </View>
                         ) : (
-                          <View style={styles.actionRow}>
-                            <Pressable
-                              onPress={() => openRating(a.id)}
-                              style={[styles.actionButton, styles.rateButton]}
-                            >
-                              <Ionicons name="star-outline" size={14} color="#b45309" />
-                              <Text style={styles.rateButtonText}>Rate performance</Text>
-                            </Pressable>
-                          </View>
+                          <>
+                            <View style={styles.actionRow}>
+                              {/* Direct thread with the accepted performer */}
+                              <Pressable
+                                onPress={() =>
+                                  router.push({
+                                    pathname: "/messages",
+                                    params: {
+                                      withId: String(a.userId),
+                                      with: applicant?.name ?? "Performer",
+                                    },
+                                  })
+                                }
+                                style={[styles.actionButton, styles.messageActionButton]}
+                              >
+                                <Ionicons name="chatbubble-ellipses-outline" size={14} color={PURPLE} />
+                                <Text style={styles.messageActionText}>Message</Text>
+                              </Pressable>
+                              {!given[a.id] ? (
+                                <Pressable
+                                  onPress={() => openRating(a.id)}
+                                  style={[styles.actionButton, styles.rateButton]}
+                                >
+                                  <Ionicons name="star-outline" size={14} color="#b45309" />
+                                  <Text style={styles.rateButtonText}>Rate performance</Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+
+                            {given[a.id] ? (
+                              <View style={styles.ratedBox}>
+                                <View style={styles.starsRow}>
+                                  {[1, 2, 3, 4, 5].map((n) => (
+                                    <Ionicons
+                                      key={n}
+                                      name={n <= given[a.id].stars ? "star" : "star-outline"}
+                                      size={16}
+                                      color={n <= given[a.id].stars ? "#f59e0b" : "#d1d5db"}
+                                    />
+                                  ))}
+                                  <Text style={styles.ratedLabel}>You rated {given[a.id].stars}/5</Text>
+                                </View>
+                                {given[a.id].comment ? (
+                                  <Text style={styles.ratedComment}>“{given[a.id].comment}”</Text>
+                                ) : null}
+                              </View>
+                            ) : null}
+                          </>
                         )
                       ) : null}
                     </BlurView>
@@ -450,6 +474,9 @@ const styles = StyleSheet.create({
   // Rating widget (accepted performances)
   rateButton: { backgroundColor: "rgba(245,158,11,0.14)" },
   rateButtonText: { color: "#b45309", fontSize: 13, fontWeight: "700" },
+  // Direct message to the accepted performer
+  messageActionButton: { backgroundColor: "rgba(124,58,237,0.1)" },
+  messageActionText: { color: PURPLE, fontSize: 13, fontWeight: "700" },
   rateBox: {
     marginTop: 12, backgroundColor: "rgba(245,158,11,0.07)",
     borderRadius: 12, padding: 12,

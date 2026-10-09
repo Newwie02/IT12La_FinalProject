@@ -15,14 +15,17 @@ import {
   getBandProfile,
   getMyApplications,
   getMyBand,
+  getMe,
   applyToBand,
   resolveUrl,
 } from "../api";
 
-// GigMatch — Band profile (opened with "View Profile" on a recommended band)
+// GigMatch — Band profile (opened with "View Profile" on a recommended band,
+// or by a client from the dashboard's Browse bands row)
 // Route: app/band-profile.jsx  →  "/band-profile"
 // Params: id (band id), name
-// Shows the band's details and lets a musician apply to join.
+// Musicians see "Apply to join"; clients can only view the details and
+// message the band (clients can never join a band).
 
 function toList(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -57,6 +60,7 @@ export default function BandProfile() {
   const [ownsBand, setOwnsBand] = useState(false); // I own some band
   const [isMember, setIsMember] = useState(false); // I was accepted into some band
   const [applying, setApplying] = useState(false);
+  const [myRole, setMyRole] = useState(null); // "musician" | "band" | "client"
 
   useEffect(() => {
     if (!id) {
@@ -69,8 +73,9 @@ export default function BandProfile() {
       getBandProfile(String(id)),
       getMyApplications().catch(() => []),
       getMyBand().catch(() => null),
+      getMe().catch(() => null),
     ])
-      .then(([profile, mine, myBand]) => {
+      .then(([profile, mine, myBand, me]) => {
         if (!active) return;
         setBand(profile);
         const existing = mine.find((a) => String(a.bandId) === String(id));
@@ -78,6 +83,7 @@ export default function BandProfile() {
         setIsMyBand(!!myBand && String(myBand.id) === String(id));
         setOwnsBand(!!myBand);
         setIsMember(mine.some((a) => a.status === "accepted"));
+        setMyRole(me?.role ?? null);
       })
       .catch((e) => {
         if (active) setError(e.message || "Couldn't load this band.");
@@ -120,6 +126,18 @@ export default function BandProfile() {
   const displayName = band?.name || name || "Band";
   const photo = resolveUrl(band?.photoUrl);
   const showPhoto = photo && !photoFailed;
+
+  // Clients can view a band's details but never join it — they get a
+  // "Message band" button instead of the Apply flow.
+  const isClientRole = myRole === "client" || myRole === "organizer";
+
+  const messageBand = () => {
+    if (!band?.ownerId) return;
+    router.push({
+      pathname: "/messages",
+      params: { withId: String(band.ownerId), with: String(displayName) },
+    });
+  };
 
   const primaryGenres = toList(band?.genre);
   const secondaryGenres = toList(band?.secondaryGenres);
@@ -240,11 +258,22 @@ export default function BandProfile() {
                 <ChipRow items={eventTypes} />
               </View>
 
-              {/* Songs */}
+              {/* Portfolio — the songs this band performs (visible to everyone,
+                  including clients viewing the band to hire them) */}
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>Songs</Text>
+                <View style={styles.portfolioHeader}>
+                  <View style={styles.portfolioIconWrap}>
+                    <Ionicons name="albums-outline" size={15} color={PURPLE} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>Portfolio</Text>
+                    <Text style={styles.portfolioHint}>Songs this band performs</Text>
+                  </View>
+                </View>
                 {songs.length === 0 ? (
-                  <Text style={styles.bodyText}>No songs added yet.</Text>
+                  <Text style={styles.bodyText}>
+                    No portfolio songs yet — songs the band adds will appear here.
+                  </Text>
                 ) : (
                   <View style={{ gap: 8 }}>
                     {songs.map((song, index) => (
@@ -268,19 +297,28 @@ export default function BandProfile() {
         </View>
       </ScrollView>
 
-      {/* Apply button */}
+      {/* Footer: clients message the band, musicians apply to join */}
       {!loading && !error && !isMyBand ? (
-        <View style={styles.footer}>
-          <Pressable
-            onPress={confirmApply}
-            disabled={applyDisabled}
-            style={[styles.applyButton, applyDisabled && styles.applyButtonDisabled]}
-          >
-            <Text style={[styles.applyButtonText, applyDisabled && styles.applyButtonTextDisabled]}>
-              {applyLabel}
-            </Text>
-          </Pressable>
-        </View>
+        isClientRole ? (
+          <View style={styles.footer}>
+            <Pressable onPress={messageBand} style={styles.applyButton}>
+              <Text style={styles.applyButtonText}>Message band</Text>
+            </Pressable>
+            <Text style={styles.footerHint}>Clients can view bands but can't join them.</Text>
+          </View>
+        ) : (
+          <View style={styles.footer}>
+            <Pressable
+              onPress={confirmApply}
+              disabled={applyDisabled}
+              style={[styles.applyButton, applyDisabled && styles.applyButtonDisabled]}
+            >
+              <Text style={[styles.applyButtonText, applyDisabled && styles.applyButtonTextDisabled]}>
+                {applyLabel}
+              </Text>
+            </Pressable>
+          </View>
+        )
       ) : null}
     </View>
   );
@@ -326,6 +364,14 @@ const styles = StyleSheet.create({
   cardTitle: { color: "#111827", fontSize: 14, fontWeight: "700", marginBottom: 8 },
   cardTitleSpaced: { marginTop: 16 },
   bodyText: { color: "#4b5563", fontSize: 13, lineHeight: 19 },
+
+  // Portfolio card header (visible to every viewer, clients included)
+  portfolioHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  portfolioIconWrap: {
+    height: 30, width: 30, borderRadius: 15,
+    backgroundColor: "rgba(124,58,237,0.1)", alignItems: "center", justifyContent: "center",
+  },
+  portfolioHint: { color: "#9ca3af", fontSize: 11, marginTop: 1 },
   valueText: { color: "#111827", fontSize: 15, fontWeight: "600" },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
 
@@ -374,4 +420,5 @@ const styles = StyleSheet.create({
   applyButtonDisabled: { backgroundColor: "#e5e0f5" },
   applyButtonText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   applyButtonTextDisabled: { color: "#7c3aed" },
+  footerHint: { color: "#9ca3af", fontSize: 11, textAlign: "center", marginTop: 8 },
 });
