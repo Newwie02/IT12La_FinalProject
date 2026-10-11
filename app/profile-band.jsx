@@ -4,7 +4,8 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyBand, clearToken, resolveUrl } from "../api";
+import { getMyBand, getMe, clearToken, resolveUrl } from "../api";
+import { unregisterPushToken } from "../components/usePushNotifications";
 
 // GigMatch — Band profile screen (your band's own profile)
 // Route: app/profile-band.jsx  →  "/profile-band"
@@ -18,8 +19,22 @@ const MENU_ITEMS = [
   { key: "members", icon: "people-outline", label: "Band Members", route: "/band-members", leaderOnly: true },
   { key: "applications", icon: "person-add-outline", label: "Musician Applications", route: "/band-applications", leaderOnly: true },
   { key: "public", icon: "eye-outline", label: "View Public Profile", route: "/band-profile" },
+  { key: "verify", icon: "shield-checkmark-outline", label: "ID Verification", route: "/verification" },
   { key: "ratings", icon: "star-outline", label: "Ratings Review", route: "/ratings-review" },
 ];
+
+// Shown under the "ID Verification" row so the account state is legible
+// without opening the screen. Same wording as app/verification.jsx.
+// Verification belongs to the member account, not the band, so this reads the
+// signed-in user (fetched alongside the band below) rather than band data.
+function verifyStatusOf(me) {
+  if (me?.verificationStatus === "approved" && me?.verified) {
+    return { text: "ID verified", color: "#16a34a" };
+  }
+  if (me?.verificationStatus === "pending") return { text: "Waiting for review", color: "#d97706" };
+  if (me?.verificationStatus === "rejected") return { text: "Not approved", color: "#dc2626" };
+  return { text: "Not verified", color: "#9ca3af" };
+}
 
 function toList(value) {
   return value ? String(value).split(",").filter(Boolean) : [];
@@ -31,6 +46,7 @@ export default function ProfileBand() {
   const { showAlert, AlertModal } = useAppAlert();
 
   const [band, setBand] = useState(null);
+  const [me, setMe] = useState(null); // the signed-in member, for ID verification
   const [checked, setChecked] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
 
@@ -51,6 +67,16 @@ export default function ProfileBand() {
         .finally(() => {
           if (active) setChecked(true);
         });
+
+      // The signed-in MEMBER, not the band — ID verification belongs to the
+      // account. Kept as an independent fetch so it still loads for members
+      // who haven't created a band yet.
+      getMe()
+        .then((data) => {
+          if (active) setMe(data);
+        })
+        .catch((e) => console.log("getMe error:", e.message));
+
       return () => {
         active = false;
       };
@@ -67,6 +93,9 @@ export default function ProfileBand() {
   const isLeader = band ? band.isLeader !== false : false;
 
   const subtitle = ["Band", bandLocation, primaryGenre].filter(Boolean).join(" · ");
+
+  // Drives the status line under the "ID Verification" menu row.
+  const verifyStatus = verifyStatusOf(me);
 
   const menuItems = MENU_ITEMS.filter((item) => {
     if (item.leaderOnly && !isLeader) return false;
@@ -108,6 +137,9 @@ export default function ProfileBand() {
           label: "Log out",
           style: "destructive",
           onPress: async () => {
+            // Unregister push BEFORE clearing the token — the request to
+            // drop this device's token still needs to authenticate.
+            await unregisterPushToken();
             await clearToken();
             router.replace("/");
           },
@@ -174,7 +206,14 @@ export default function ProfileBand() {
                 <View style={styles.menuIconWrap}>
                   <Ionicons name={item.icon} size={18} color="#111827" />
                 </View>
-                <Text style={styles.menuLabel}>{item.label}</Text>
+                <View style={styles.menuText}>
+                  <Text style={styles.menuLabel}>{item.label}</Text>
+                  {item.key === "verify" ? (
+                    <Text style={[styles.verifyStatus, { color: verifyStatus.color }]}>
+                      {verifyStatus.text}
+                    </Text>
+                  ) : null}
+                </View>
                 <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
               </Pressable>
             ))
@@ -261,7 +300,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  menuLabel: { flex: 1, color: "#111827", fontSize: 14, fontWeight: "600" },
+  menuText: { flex: 1 },
+  menuLabel: { color: "#111827", fontSize: 14, fontWeight: "600" },
+  verifyStatus: { fontSize: 11.5, fontWeight: "600", marginTop: 2 },
   logoutLabel: { flex: 1, color: "#ef4444", fontSize: 14, fontWeight: "600" },
 
   emptyCard: {

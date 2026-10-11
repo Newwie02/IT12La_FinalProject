@@ -99,7 +99,8 @@ export default function GigDetail() {
         "Done",
         updated.status === "cancelled"
           ? "The gig was cancelled and has left Discover."
-          : "The booking was released — the gig is open again in Discover."
+          : "The booking was released — the gig is open again in Discover.\n\n" +
+            "A warning was added to your account for walking away from a confirmed booking."
       );
     } catch (e) {
       Alert.alert("Couldn't cancel", e.message || "Something went wrong.");
@@ -112,8 +113,9 @@ export default function GigDetail() {
     Alert.alert(
       booked ? "Cancel this booking?" : "Cancel this gig?",
       booked
-        ? "The booking is released, the gig returns to Discover, and everyone who was declined can re-apply."
-        : "The gig will be closed and leave Discover.",
+        ? "The booking is released, the gig returns to Discover, and everyone who was declined can re-apply.\n\n" +
+          "Cancelling a confirmed booking leaves the band without work it had already agreed to, so it adds a warning to your account."
+        : "The gig will be closed and leave Discover.\n\nNo band has been booked, so nothing happens to your account.",
       [
         { text: "Schedule changed", onPress: () => doCancel("Schedule changed") },
         { text: "No longer needed", onPress: () => doCancel("No longer needed") },
@@ -126,7 +128,8 @@ export default function GigDetail() {
   const confirmBackOut = () => {
     Alert.alert(
       "Back out of this booking?",
-      "The gig returns to Discover and the client is notified.",
+      "The gig returns to Discover and the client is notified.\n\n" +
+        "Backing out of a confirmed booking leaves the client without a band for their event, so it adds a warning to your account.",
       [
         { text: "Schedule changed", onPress: () => doCancel("Schedule changed") },
         { text: "Line-up changed", onPress: () => doCancel("Line-up changed") },

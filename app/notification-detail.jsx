@@ -3,23 +3,14 @@ import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from "react-nati
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { deleteNotification, markNotificationRead } from "../api";
+import { styleFor, formatNotificationDate } from "../components/notificationStyles";
 
 // GigMatch — Full notification message
 // Route: app/notification-detail.jsx  →  "/notification-detail"
 // Opened from /notifications with { id, title, message, createdAt, type }.
-
-function formatDate(value) {
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-}
-
-const TYPE_STYLE = {
-  removed: { icon: "person-remove-outline", color: "#dc2626", tint: "rgba(220,38,38,0.1)" },
-  "gig-application": { icon: "document-text-outline", color: "#7c3aed", tint: "rgba(124,58,237,0.1)" },
-  rating: { icon: "star", color: "#f59e0b", tint: "rgba(245,158,11,0.14)" },
-  info: { icon: "notifications-outline", color: "#7c3aed", tint: "rgba(124,58,237,0.1)" },
-};
+// Icons and timestamps come from the same shared module the list screen uses,
+// and the date here now carries the TIME as well as the day so an admin action
+// can be traced to a moment.
 
 export default function NotificationDetail() {
   const router = useRouter();
@@ -48,7 +39,7 @@ export default function NotificationDetail() {
     ]);
   };
 
-  const look = TYPE_STYLE[type] ?? TYPE_STYLE.info;
+  const look = styleFor(type);
 
   return (
     <View style={styles.page}>
@@ -70,7 +61,7 @@ export default function NotificationDetail() {
               <Ionicons name={look.icon} size={24} color={look.color} />
             </View>
             <Text style={styles.title}>{title}</Text>
-            {createdAt ? <Text style={styles.date}>{formatDate(createdAt)}</Text> : null}
+            {createdAt ? <Text style={styles.date}>{formatNotificationDate(createdAt)}</Text> : null}
             <Text style={styles.message}>{message}</Text>
           </View>
         ) : (

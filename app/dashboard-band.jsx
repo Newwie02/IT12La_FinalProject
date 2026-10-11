@@ -7,7 +7,9 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
 import { useAppAlert } from "../components/useAppAlert";
-import { getMyBand, getGigs, getMusicians, getReceivedApplications, getBandMembers, getNotifications, getMe, getReceivedRatings, getBookings, getMyGigApplications, resolveUrl } from "../api";
+import { useMyLocation, nearbyNotice } from "../components/useMyLocation";
+import { usePushNotifications } from "../components/usePushNotifications";
+import { getMyBand, getGigs, getMusicians, getReceivedApplications, getBandMembers, getNotifications, getMe, getReceivedRatings, getBookings, getMyGigApplications, resolveUrl, formatDistance } from "../api";
 
 // GigMatch — Band dashboard (home, band-leader view)
 // Route: app/dashboard-band.jsx  →  "/dashboard-band"
@@ -40,6 +42,9 @@ function timeAgo(value) {
 
 export default function DashboardBand() {
   const router = useRouter();
+  // Register this device for push once we're signed in. Best-effort — see
+  // components/usePushNotifications.js.
+  usePushNotifications();
   const params = useLocalSearchParams();
   const { fullName, instruments, genres } = params;
   const [band, setBand] = useState(null);
@@ -55,6 +60,10 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
   const [pendingGigs, setPendingGigs] = useState(0); // my gig applications awaiting the client's answer
   const [myId, setMyId] = useState(null); // logged-in user id (for the "my gigs" count)
    const isLeader = band ? band.isLeader !== false : params.isLeader !== "false";
+
+  // GPS — the server measures distance from our pin to each musician's pin and
+  // sorts the list nearest-first.
+  const { coords, status: locationStatus } = useMyLocation();
 
   useEffect(() => {
     getMe()
@@ -90,11 +99,41 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
             instrument: toList(m.instruments ?? m.instrument)[0] ?? "Musician",
             genre: toList(m.genres ?? m.genre)[0] ?? "",
             photoUrl: m.photoUrl ?? m.avatarUrl ?? null,
+            distanceKm: typeof m.distanceKm === "number" ? m.distanceKm : null,
           }))
         );
       })
       .catch((e) => console.log("getMusicians error:", e.message));
   }, []);
+
+  // Once the GPS pin lands (and has been saved server-side), re-pull the
+  // musician list so it comes back sorted nearest-first with distances.
+  useEffect(() => {
+    if (!coords) return;
+    let active = true;
+    const t = setTimeout(() => {
+      getMusicians()
+        .then((data) => {
+          if (!active) return;
+          const list = Array.isArray(data) ? data : [];
+          setMusicians(
+            list.map((m) => ({
+              id: String(m.id),
+              name: m.name ?? "Musician",
+              instrument: toList(m.instruments ?? m.instrument)[0] ?? "Musician",
+              genre: toList(m.genres ?? m.genre)[0] ?? "",
+              photoUrl: m.photoUrl ?? m.avatarUrl ?? null,
+              distanceKm: typeof m.distanceKm === "number" ? m.distanceKm : null,
+            }))
+          );
+        })
+        .catch(() => {});
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [coords]);
 
   // Band info refetches on focus so photo/name edits show up right away
   useFocusEffect(
@@ -512,9 +551,11 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
           ))}
         </ScrollView>
 
-        {/* Suggest musician */}
+        {/* Suggest musician — nearest first when we have your location */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Suggest musician</Text>
+          <Text style={styles.sectionTitle}>
+            {coords ? "Musicians near you" : "Suggest musician"}
+          </Text>
          <Pressable
   onPress={() =>
     router.push({
@@ -526,6 +567,9 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
   <Text style={styles.seeAll}>See all</Text>
 </Pressable>
         </View>
+        {nearbyNotice(locationStatus) ? (
+          <Text style={styles.nearbyNote}>{nearbyNotice(locationStatus)}</Text>
+        ) : null}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -558,6 +602,12 @@ const [unreadCount, setUnreadCount] = useState(0); // unread notifications (bell
                     </View>
                   ) : null}
                 </View>
+                {formatDistance(person.distanceKm) ? (
+                  <View style={styles.distanceChip}>
+                    <Ionicons name="navigate-outline" size={11} color={PURPLE} />
+                    <Text style={styles.distanceText}>{formatDistance(person.distanceKm)} away</Text>
+                  </View>
+                ) : null}
               </BlurView>
             </Pressable>
           ))}
@@ -739,6 +789,16 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   tagChipText: { color: PURPLE, fontSize: 10, fontWeight: "600" },
+
+  /* Nearby (GPS) */
+  nearbyNote: { color: "#6b7280", fontSize: 11.5, fontStyle: "italic", marginBottom: 8 },
+  distanceChip: {
+    flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
+    marginTop: 6, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2,
+    backgroundColor: "rgba(124,58,237,0.12)",
+  },
+  distanceText: { color: PURPLE, fontSize: 10, fontWeight: "600" },
+
   tagChipGreen: {
     backgroundColor: "rgba(34,197,94,0.12)",
     borderRadius: 999,

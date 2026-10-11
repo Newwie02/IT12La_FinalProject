@@ -13,17 +13,19 @@ import {
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { signup, saveToken } from "../api";
+import { sendSignupOtp } from "../api";
  
 // GigMatch — sign-up screen (Expo / React Native)
 // Route: app/sign-up.jsx  →  "/sign-up"
-// Flow: this is step 1 of 3. Step 2 is role-select.jsx ("/role-select"),
-// step 3 branches by role: /profile-setup-musician, /profile-setup-band,
-// or /profile-setup-organizer.
- 
+// Flow: this is step 1 of 4. Step 1 only REQUESTS a verification code for
+// your email — step 2 ("/verify-email") creates the account once the code
+// you type matches the one we emailed. Step 3 is role-select.jsx
+// ("/role-select"), step 4 branches by role: /profile-setup-musician,
+// /profile-setup-band, or /profile-setup-organizer.
+
 export default function GigMatchSignUp() {
   const router = useRouter();
- 
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -76,19 +78,27 @@ export default function GigMatchSignUp() {
   const handleSubmit = async () => {
     if (!validate()) return;
     setSubmitting(true);
- 
+
     try {
-      const { token } = await signup({
-        name: name.trim(),
+      // Step 1 only REQUESTS the verification code (and checks that the
+      // email / phone aren't already taken). The account is created in
+      // step 2, once the code you type matches the one we emailed.
+      const data = await sendSignupOtp({
         email: email.trim(),
-        password,
-        role: "musician",
         phone: phone.trim(),
       });
- 
-      await saveToken(token);
- 
-      router.push({ pathname: "/role-select", params: { fullName: name.trim() } });
+
+      router.push({
+        pathname: "/verify-email",
+        params: {
+          fullName: name.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          password,
+          // Demo mode only (empty when the code was really emailed).
+          devCode: data.devCode ?? "",
+        },
+      });
     } catch (err) {
       const message = err.message || "Signup failed. Try again.";
  
@@ -134,12 +144,13 @@ export default function GigMatchSignUp() {
                 >
                   <Text style={styles.backArrow}>←</Text>
                 </Pressable>
-                <Text style={styles.stepLabel}>Step 1 of 3</Text>
+                <Text style={styles.stepLabel}>Step 1 of 4</Text>
               </View>
- 
+
               {/* Progress bar */}
               <View style={styles.progressRow}>
                 <View style={[styles.progressSegment, styles.progressFilled]} />
+                <View style={styles.progressSegment} />
                 <View style={styles.progressSegment} />
                 <View style={styles.progressSegment} />
               </View>
@@ -283,7 +294,7 @@ export default function GigMatchSignUp() {
                   <Text
                     style={[styles.submitText, !canSubmit && styles.submitTextDisabled]}
                   >
-                    {submitting ? "Creating account…" : "Continue"}
+                    {submitting ? "Sending code…" : "Continue"}
                   </Text>
                 </LinearGradient>
               </Pressable>

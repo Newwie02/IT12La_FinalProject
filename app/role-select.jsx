@@ -12,8 +12,9 @@ import { BlurView } from "expo-blur";
 import { updateMyRole } from "../api";
 
 
-// GigMatch — onboarding step 2: "How will you use GigMatch?"
-// Flow: sign-up ("/sign-up", step 1) → this screen (step 2) → step 3 (final),
+// GigMatch — onboarding step 3: "How will you use GigMatch?"
+// Flow: sign-up ("/sign-up", step 1) → verify-email ("/verify-email",
+// step 2, code emailed to you) → this screen (step 3) → step 4 (final),
 // which branches by role:
 //   musician → profile-setup-musician.jsx  ("/profile-setup-musician")
 //   band     → profile-setup-band.jsx      ("/profile-setup-band")
@@ -96,11 +97,12 @@ export default function OnboardingRoleStep() {
               >
                 <Text style={styles.backArrow}>←</Text>
               </Pressable>
-              <Text style={styles.stepLabel}>Step 2 of 3</Text>
+              <Text style={styles.stepLabel}>Step 3 of 4</Text>
             </View>
 
             {/* Progress bar */}
             <View style={styles.progressRow}>
+              <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={styles.progressSegment} />

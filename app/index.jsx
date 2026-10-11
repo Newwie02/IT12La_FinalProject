@@ -144,9 +144,9 @@ export default function GigMatchLogin() {
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Google */}
+              {/* Google — opens the email OTP verification flow */}
               <Pressable
-                onPress={() => {}}
+                onPress={() => router.push("/otp-login")}
                 style={({ pressed }) => [
                   styles.google,
                   pressed && styles.pressed,
@@ -180,6 +180,15 @@ export default function GigMatchLogin() {
                   <Text style={styles.footerLink}>Sign up</Text>
                 </Pressable>
               </View>
+
+              {/* Staff entry point — separate route (/admin/login), not this form */}
+              <Pressable
+                onPress={() => router.push("/admin/login")}
+                hitSlop={8}
+                style={styles.staffRow}
+              >
+                <Text style={styles.staffLink}>Staff / Administrator login</Text>
+              </Pressable>
             </BlurView>
           </View>
         </ScrollView>
@@ -378,5 +387,14 @@ const styles = StyleSheet.create({
     color: "#d8b4fe",
     fontSize: 14,
     fontWeight: "500",
+  },
+
+  staffRow: {
+    marginTop: 14,
+    alignSelf: "center",
+  },
+  staffLink: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
   },
 });

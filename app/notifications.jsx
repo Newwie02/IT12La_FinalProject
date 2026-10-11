@@ -17,43 +17,17 @@ import {
   markAllNotificationsRead,
   deleteNotification,
 } from "../api";
+import { PURPLE, styleFor, formatNotificationDate } from "../components/notificationStyles";
 
 // GigMatch — Notifications list
 // Route: app/notifications.jsx  →  "/notifications"
 // Tapping the bell on any dashboard opens this screen. Each card opens
 // /notification-detail with the full message. Long-press or the trash
 // button deletes; "Mark all as read" clears the unread badges.
-
-const PURPLE = "#7c3aed";
-
-// Icon + color per notification type (everything else falls back to info)
-const TYPE_STYLE = {
-  removed: { icon: "person-remove-outline", color: "#dc2626", tint: "rgba(220,38,38,0.1)" },
-  accepted: { icon: "checkmark-circle-outline", color: "#16a34a", tint: "rgba(34,197,94,0.12)" },
-  rejected: { icon: "close-circle-outline", color: "#dc2626", tint: "rgba(220,38,38,0.1)" },
-  "gig-application": { icon: "document-text-outline", color: PURPLE, tint: "rgba(124,58,237,0.1)" },
-  rating: { icon: "star", color: "#f59e0b", tint: "rgba(245,158,11,0.14)" },
-  info: { icon: "notifications-outline", color: PURPLE, tint: "rgba(124,58,237,0.1)" },
-};
-
-function styleFor(type) {
-  return TYPE_STYLE[type] ?? TYPE_STYLE.info;
-}
-
-function formatDate(value) {
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return "";
-
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round((startOfToday - day) / 86400000);
-
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  if (diffDays === 0) return `Today, ${time}`;
-  if (diffDays === 1) return `Yesterday, ${time}`;
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-}
+//
+// Icon/color per type and the date formatting live in
+// components/notificationStyles.js, shared with /notification-detail so the
+// two screens can't drift apart.
 
 export default function Notifications() {
   const router = useRouter();
@@ -228,7 +202,7 @@ export default function Notifications() {
                       </Text>
                       {!n.isRead ? <View style={styles.unreadDot} /> : null}
                     </View>
-                    <Text style={styles.cardDate}>{formatDate(n.createdAt)}</Text>
+                    <Text style={styles.cardDate}>{formatNotificationDate(n.createdAt)}</Text>
                     <Text style={styles.cardMessage} numberOfLines={3}>
                       {n.message}
                     </Text>

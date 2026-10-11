@@ -16,9 +16,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import * as ImagePicker from "expo-image-picker";
 
-// GigMatch — onboarding step 3: "Set up your band profile" (band)
+// GigMatch — onboarding step 4: "Set up your band profile" (band)
 // Route: app/profile-setup-band.jsx  →  "/profile-setup-band"
-// Flow: sign-up (step 1) → role-select (step 2, role = "band") → this screen (step 3, final).
+// Flow: sign-up (step 1) → verify-email (step 2, code emailed to you) →
+// role-select (step 3, role = "band") → this screen (step 4, final).
 // Band-specific fields only (no stage name / instruments / birthday — the full
 // band details are set later in /create-band). Lands on the musician dashboard;
 // the band dashboard unlocks once a band exists.
@@ -139,11 +140,12 @@ export default function ProfileSetupBand() {
               <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton}>
                 <Text style={styles.backArrow}>←</Text>
               </Pressable>
-              <Text style={styles.stepLabel}>Step 3 of 3</Text>
+              <Text style={styles.stepLabel}>Step 4 of 4</Text>
             </View>
 
             {/* Progress bar */}
             <View style={styles.progressRow}>
+              <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />

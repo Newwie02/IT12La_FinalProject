@@ -4,7 +4,7 @@ import Constants from "expo-constants";
 
 
 const host = Constants.expoConfig?.hostUri?.split(":")[0];
-export const SERVER_URL = `http://${host ?? "192.168.100.15"}:5000`; // no /api
+export const SERVER_URL = `http://${host ?? "192.168.1.35"}:5000`; // no /api
 const BASE_URL = `${SERVER_URL}/api`;
 
 // Turns "/uploads/abc.jpg" into a full URL the phone can load.
@@ -79,6 +79,7 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   if (!res.ok) {
     const e = new Error(data.message || "Something went wrong");
     e.field = data.field;
+    e.retryAfterSeconds = data.retryAfterSeconds;
     throw e;
   }
 
@@ -93,8 +94,176 @@ export function signup({ name, email, phone, password, role }) {
   });
 }
 
+// Sign-up step 2: email verification. The account is only created by
+// verifySignupOtp, and only when the entered code matches the emailed one.
+export function sendSignupOtp({ email, phone }) {
+  return request("/auth/signup/otp/send", { method: "POST", body: { email, phone } });
+}
+
+export function verifySignupOtp({ name, email, phone, password, role, code }) {
+  return request("/auth/signup/otp/verify", {
+    method: "POST",
+    body: { name, email, phone, password, role, code },
+  });
+}
+
 export function login({ email, password }) {
   return request("/auth/login", { method: "POST", body: { email, password } });
+}
+
+// Administrator sign-in. Separate from login() on purpose: the server answers
+// 403 on /auth/login for admin accounts, and answers 403 here for accounts
+// that aren't admins, so the two doors never overlap.
+export function adminLogin({ email, password }) {
+  return request("/auth/admin/login", {
+    method: "POST",
+    body: { email, password },
+  });
+}
+
+// Re-checks that the stored token really belongs to a staff account. The
+// admin shell calls this on boot so a member token can't render admin screens.
+export function getAdminMe() {
+  return request("/admin/me", { auth: true });
+}
+
+// Platform analytics for the admin home (roles + gig totals).
+export function getAdminStats() {
+  return request("/admin/stats", { auth: true });
+}
+
+// --- Admin dashboard ---
+// Headline metrics + the needs-attention queue, all in one call.
+export function getAdminDashboard() {
+  return request("/admin/dashboard", { auth: true });
+}
+
+// Paginated/searchable member list. Pass { q, role, status, accountStatus }.
+export function getAdminUsers(params = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v != null && v !== "")
+  ).toString();
+  return request(`/admin/users${qs ? `?${qs}` : ""}`, { auth: true });
+}
+
+// Pending ID-verification requests, oldest waiting first.
+export function getAdminVerifications() {
+  return request("/admin/verifications", { auth: true });
+}
+
+// decision is "approve" (grants the badge) or "reject". `note` is shown back
+// to the member if they re-request.
+export function reviewVerification(id, decision, note) {
+  return request(`/admin/verifications/${id}`, {
+    method: "PATCH",
+    auth: true,
+    body: { decision, note },
+  });
+}
+
+// Grant or revoke the verified badge directly, outside the request queue.
+export function setAdminUserVerified(id, verified) {
+  return request(`/admin/users/${id}/verified`, {
+    method: "PATCH",
+    auth: true,
+    body: { verified },
+  });
+}
+
+// Moderation: status is active | warned | suspended | banned.
+// `days` only applies to "suspended"; `reason` is recorded in the audit log.
+export function setAdminUserStatus(id, { status, reason, days }) {
+  return request(`/admin/users/${id}/status`, {
+    method: "PATCH",
+    auth: true,
+    body: { status, reason, days },
+  });
+}
+
+// Reported content queue. Pass { status } to filter ("open", "reviewing", ...).
+export function getAdminReports(params = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v != null && v !== "")
+  ).toString();
+  return request(`/admin/reports${qs ? `?${qs}` : ""}`, { auth: true });
+}
+
+export function resolveAdminReport(id, { status, resolution }) {
+  return request(`/admin/reports/${id}`, {
+    method: "PATCH",
+    auth: true,
+    body: { status, resolution },
+  });
+}
+
+export function getAdminDisputes(params = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v != null && v !== "")
+  ).toString();
+  return request(`/admin/disputes${qs ? `?${qs}` : ""}`, { auth: true });
+}
+
+// Sending a `decision` closes the dispute and stamps who decided it.
+export function updateAdminDispute(id, { status, notes, decision }) {
+  return request(`/admin/disputes/${id}`, {
+    method: "PATCH",
+    auth: true,
+    body: { status, notes, decision },
+  });
+}
+
+// --- Gig moderation ----------------------------------------------------
+// New gig posts start "pending" and stay invisible to Discover until a
+// moderator approves them.
+export function getAdminGigs(params = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v != null && v !== "")
+  ).toString();
+  return request(`/admin/gigs${qs ? `?${qs}` : ""}`, { auth: true });
+}
+
+export function moderateAdminGig(id, { decision, note }) {
+  return request(`/admin/gigs/${id}`, {
+    method: "PATCH",
+    auth: true,
+    body: { decision, note },
+  });
+}
+
+// --- System announcements ---
+// One message, delivered to every member's notification center (and pushed,
+// where the member's device has push enabled). Returns { recipients, sent }.
+export function sendAdminAnnouncement({ title, message }) {
+  return request("/admin/announcements", {
+    method: "POST",
+    auth: true,
+    body: { title, message },
+  });
+}
+
+// Growth, bookings-per-month, top genres/instruments, ratings, turnaround.
+export function getAdminAnalytics(months = 6) {
+  return request(`/admin/analytics?months=${months}`, { auth: true });
+}
+
+export function getAdminAudit(limit = 100) {
+  return request(`/admin/audit?limit=${limit}`, { auth: true });
+}
+
+// Confirmed bookings that someone walked away from, newest first. Each row
+// carries the canceller, the gig, the reason, and whether the automatic
+// warning landed — staff escalate from here with setAdminUserStatus.
+export function getAdminCancellations(limit = 100) {
+  return request(`/admin/cancellations?limit=${limit}`, { auth: true });
+}
+
+// Email OTP sign-in ("Continue with Google")
+export function sendOtp(email) {
+  return request("/auth/otp/send", { method: "POST", body: { email } });
+}
+
+export function verifyOtp({ email, code }) {
+  return request("/auth/otp/verify", { method: "POST", body: { email, code } });
 }
 
 export function updateMyRole(role) {
@@ -128,6 +297,68 @@ export function changePassword({ currentPassword, newPassword }) {
     auth: true,
     body: { currentPassword, newPassword },
   });
+}
+
+// --- ID verification ---
+// Upload the ID photo with uploadPhoto() first, then send its URL here. The
+// account becomes "pending" and shows up in the admin review queue; the result
+// comes back as a notification (see server/utils/notify.js).
+export function requestVerification(idDocUrl) {
+  return request("/users/me/verification", {
+    method: "POST",
+    auth: true,
+    body: { idDocUrl },
+  });
+}
+
+// --- GPS / nearby ---
+// Sends the device's current position so other members can see how far away
+// we are. The server stores the pin and computes distances for the lists.
+export function saveMyLocation({ latitude, longitude }) {
+  return request("/users/me/location", {
+    method: "PATCH",
+    auth: true,
+    body: { latitude, longitude },
+  });
+}
+
+// --- Push notifications ---
+// Registers this device's Expo push token so important admin actions can also
+// arrive as a push. The app sends null/"" when permission is declined or the
+// member signs out, which clears the stored token rather than leaving us
+// pushing to a device that has opted out.
+export function savePushToken(token) {
+  return request("/users/me/push-token", {
+    method: "PATCH",
+    auth: true,
+    body: { token: token || null },
+  });
+}
+
+export function formatDistance(km) {
+  if (km == null || !Number.isFinite(km)) return null;
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  if (km < 10) return `${km.toFixed(1)} km`;
+  return `${Math.round(km)} km`;
+}
+
+// Guard for awaits that can hang forever. Expo's file read and its "winter"
+// fetch have both been seen to never settle on some devices, which left the
+// submit button stuck on "Creating band..." while no request ever left the
+// phone. Rejecting instead lets the caller show an error (and offer to carry
+// on without the photo) rather than freezing the screen.
+function withTimeout(promise, ms, message) {
+  const p = Promise.resolve(promise);
+  // A timed-out upload may still settle later — swallow it so it can't raise
+  // an unhandled rejection after we've already given up on it.
+  p.catch(() => {});
+  let timer;
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
 }
 
 // Uploads a picked image to the server and returns its public URL.
@@ -176,9 +407,13 @@ export async function uploadPhoto(uri) {
     let bytes;
     try {
       const { File } = await import("expo-file-system");
-      bytes = await new File(uri).bytes();
-    } catch {
-      throw new Error("Couldn't read the selected photo. Please pick it again.");
+      bytes = await withTimeout(
+        new File(uri).bytes(),
+        20000,
+        "Reading the selected photo took too long. Please pick a smaller photo."
+      );
+    } catch (e) {
+      throw new Error(e?.message || "Couldn't read the selected photo. Please pick it again.");
     }
     if (!bytes || bytes.length < 100) {
       throw new Error("The selected photo came through empty. Please pick it again.");
@@ -191,11 +426,15 @@ export async function uploadPhoto(uri) {
   }
 
   const token = await getToken();
-  const uploadRes = await fetch(`${BASE_URL}/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` }, // don't set Content-Type here
-    body: form,
-  });
+  const uploadRes = await withTimeout(
+    fetch(`${BASE_URL}/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }, // don't set Content-Type here
+      body: form,
+    }),
+    45000,
+    "Uploading the photo timed out. Check your connection, or create your band without a photo."
+  );
 
   const text = await uploadRes.text();
   let data = {};
@@ -210,8 +449,14 @@ export async function uploadPhoto(uri) {
 }
 
 // --- Bands ---
-export function getBands() {
-  return request("/bands");
+// Pass { lat, lng } (your own GPS position) to get each band's distance and
+// the list sorted nearest-first. Without coords you get the plain list.
+export function getBands({ lat, lng } = {}) {
+  const qs =
+    Number.isFinite(lat) && Number.isFinite(lng)
+      ? `?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`
+      : "";
+  return request(`/bands${qs}`);
 }
 
 export function getBandById(id) {

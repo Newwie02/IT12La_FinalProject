@@ -18,9 +18,10 @@ import { BlurView } from "expo-blur";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
-// GigMatch — onboarding step 3: "Set up your profile" (Event Organizer / Client)
+// GigMatch — onboarding step 4: "Set up your profile" (Event Organizer / Client)
 // Route: app/profile-setup-organizer.jsx  →  "/profile-setup-organizer"
-// Flow: sign-up (step 1) → role-select (step 2, role = "organizer") → this screen (step 3, final).
+// Flow: sign-up (step 1) → verify-email (step 2, code emailed to you) →
+// role-select (step 3, role = "organizer") → this screen (step 4, final).
 // Requires:
 //   npx expo install expo-image-picker --legacy-peer-deps
 //   npx expo install @react-native-community/datetimepicker --legacy-peer-deps
@@ -161,11 +162,12 @@ export default function ProfileSetupOrganizer() {
               <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backButton}>
                 <Text style={styles.backArrow}>←</Text>
               </Pressable>
-              <Text style={styles.stepLabel}>Step 3 of 3</Text>
+              <Text style={styles.stepLabel}>Step 4 of 4</Text>
             </View>
 
             {/* Progress bar */}
             <View style={styles.progressRow}>
+              <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
               <View style={[styles.progressSegment, styles.progressFilled]} />
@@ -220,21 +222,35 @@ export default function ProfileSetupOrganizer() {
             {/* Birthday — date picker */}
             <View style={styles.field}>
               <Text style={styles.label}>Birthday</Text>
-              <Pressable onPress={() => setShowDatePicker(true)} style={styles.dropdownField}>
-                <Text style={birthday ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                  {formatDate(birthday) ?? "Select birthday"}
-                </Text>
-                <Text style={styles.chevron}>📅</Text>
-              </Pressable>
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={birthday ?? new Date(2000, 0, 1)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  maximumDate={new Date()}
-                  onChange={onChangeDate}
+              {Platform.OS === "web" ? (
+                <input
+                  type="date"
+                  max={new Date().toISOString().split("T")[0]}
+                  value={birthday ? birthday.toISOString().split("T")[0] : ""}
+                  onChange={(e) => {
+                    if (e.target.value) setBirthday(new Date(e.target.value));
+                  }}
+                  style={webDateInputStyle}
                 />
-              ) : null}
+              ) : (
+                <>
+                  <Pressable onPress={() => setShowDatePicker(true)} style={styles.birthdayField}>
+                    <Text style={birthday ? styles.birthdayValue : styles.birthdayPlaceholder}>
+                      {formatDate(birthday) ?? "Select birthday"}
+                    </Text>
+                    <Text style={styles.chevron}>📅</Text>
+                  </Pressable>
+                  {showDatePicker ? (
+                    <DateTimePicker
+                      value={birthday ?? new Date(2000, 0, 1)}
+                      mode="date"
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      maximumDate={new Date()}
+                      onChange={onChangeDate}
+                    />
+                  ) : null}
+                </>
+              )}
             </View>
 
             {/* Position — dropdown */}
@@ -352,6 +368,19 @@ function SelectModal({ visible, title, options, selected, onSelect, onClose }) {
 
 const CARD_MAX_WIDTH = 384;
 
+const webDateInputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  borderWidth: 1,
+  borderColor: "#d1d5db",
+  backgroundColor: "#fff",
+  borderRadius: 12,
+  padding: 14,
+  fontSize: 14,
+  color: "#111827",
+  colorScheme: "light", // keep the browser's calendar popup light even in dark OS mode
+};
+
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: "#0c0a18" },
   scrollContent: {
@@ -449,6 +478,21 @@ const styles = StyleSheet.create({
   },
   dropdownValue: { color: "#fff", fontSize: 14 },
   dropdownPlaceholder: { color: "rgba(255,255,255,0.45)", fontSize: 14 },
+
+  // Birthday stands out as a light field on the dark card
+  birthdayField: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  birthdayValue: { color: "#111827", fontSize: 14 },
+  birthdayPlaceholder: { color: "#6b7280", fontSize: 14 },
   chevron: { color: "rgba(255,255,255,0.6)", fontSize: 16 },
 
   finishButton: { marginTop: 10, borderRadius: 14, paddingVertical: 15, alignItems: "center" },

@@ -14,6 +14,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import SwitchLoadingOverlay from "../components/SwitchLoadingOverlay";
+import { usePushNotifications } from "../components/usePushNotifications";
 import {
   getMusicians,
   getMyBand,
@@ -54,6 +55,9 @@ const NAV_ITEMS = [
 
 export default function DashboardMusician() {
   const router = useRouter();
+  // Register this device for push once we're signed in. Best-effort — see
+  // components/usePushNotifications.js.
+  usePushNotifications();
   const { fullName, instruments, genres } = useLocalSearchParams();
   const [activeTab, setActiveTab] = useState("home");
 

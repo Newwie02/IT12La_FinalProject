@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
 import { useAppAlert } from "../components/useAppAlert";
 import { getMyProfile, clearToken, resolveUrl } from "../api";
+import { unregisterPushToken } from "../components/usePushNotifications";
 
 // GigMatch — Musician profile screen (your own profile)
 // Route: app/profile-musician.jsx  →  "/profile-musician"
@@ -14,8 +15,20 @@ import { getMyProfile, clearToken, resolveUrl } from "../api";
 
 const MENU_ITEMS = [
   { key: "edit", icon: "create-outline", label: "Edit Profile", route: "/edit-profile" },
+  { key: "verify", icon: "shield-checkmark-outline", label: "ID Verification", route: "/verification" },
   { key: "ratings", icon: "star-outline", label: "Ratings Review", route: "/ratings-review" },
 ];
+
+// Shown under the "ID Verification" row so the account state is legible
+// without opening the screen. Same wording as app/verification.jsx.
+function verifyStatusOf(me) {
+  if (me?.verificationStatus === "approved" && me?.verified) {
+    return { text: "ID verified", color: "#16a34a" };
+  }
+  if (me?.verificationStatus === "pending") return { text: "Waiting for review", color: "#d97706" };
+  if (me?.verificationStatus === "rejected") return { text: "Not approved", color: "#dc2626" };
+  return { text: "Not verified", color: "#9ca3af" };
+}
 
 function toList(value) {
   return value ? String(value).split(",").filter(Boolean) : [];
@@ -57,6 +70,9 @@ export default function ProfileMusician() {
   const photo = resolveUrl(me?.photoUrl);
   const showPhoto = photo && /^https?:\/\//.test(photo) && !photoFailed;
 
+  // Drives the status line under the "ID Verification" menu row.
+  const verifyStatus = verifyStatusOf(me);
+
   const resolvedName = fullName?.trim() ? fullName.trim() : "Your name";
   // Full name is the identity line above — the stage name isn't shown,
   // so the headline carries the first instrument instead.
@@ -90,6 +106,9 @@ export default function ProfileMusician() {
           label: "Log out",
           style: "destructive",
           onPress: async () => {
+            // Unregister push BEFORE clearing the token — the request to
+            // drop this device's token still needs to authenticate.
+            await unregisterPushToken();
             await clearToken();
             router.replace("/");
           },
@@ -144,7 +163,14 @@ export default function ProfileMusician() {
               <View style={styles.menuIconWrap}>
                 <Ionicons name={item.icon} size={18} color="#111827" />
               </View>
-              <Text style={styles.menuLabel}>{item.label}</Text>
+              <View style={styles.menuText}>
+                <Text style={styles.menuLabel}>{item.label}</Text>
+                {item.key === "verify" ? (
+                  <Text style={[styles.verifyStatus, { color: verifyStatus.color }]}>
+                    {verifyStatus.text}
+                  </Text>
+                ) : null}
+              </View>
               <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
             </Pressable>
           ))}
@@ -233,6 +259,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  menuLabel: { flex: 1, color: "#111827", fontSize: 14, fontWeight: "600" },
+  menuText: { flex: 1 },
+  menuLabel: { color: "#111827", fontSize: 14, fontWeight: "600" },
+  verifyStatus: { fontSize: 11.5, fontWeight: "600", marginTop: 2 },
   logoutLabel: { flex: 1, color: "#ef4444", fontSize: 14, fontWeight: "600" },
 });

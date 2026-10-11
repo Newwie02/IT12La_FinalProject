@@ -7,8 +7,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../components/BottomNav";
+import { useMyLocation, nearbyNotice } from "../components/useMyLocation";
+import { usePushNotifications } from "../components/usePushNotifications";
 import {
-  getMe, getGigs, getBands, getNotifications, getReceivedGigApplications, getGivenRatings, resolveUrl,
+  getMe, getGigs, getBands, getNotifications, getReceivedGigApplications, getGivenRatings, resolveUrl, formatDistance,
 } from "../api";
 
 // GigMatch — Client / Event Organizer dashboard (home)
@@ -52,6 +54,9 @@ function timeAgo(value) {
 
 export default function DashboardClient() {
   const router = useRouter();
+  // Register this device for push once we're signed in. Best-effort — see
+  // components/usePushNotifications.js.
+  usePushNotifications();
   const { fullName } = useLocalSearchParams();
 
   const [me, setMe] = useState(null);
@@ -64,13 +69,18 @@ export default function DashboardClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
+  // GPS — lets the "Browse bands" row sort nearest-first and show distances.
+  const { coords, status: locationStatus, refresh: refreshLocation } = useMyLocation();
+
+  const load = useCallback(async (pin) => {
     try {
       setError(null);
       const profile = await getMe();
       const [gigs, allBands, notifList, received, myRatings] = await Promise.all([
         getGigs(),
-        getBands().catch(() => []),
+        // Pass our GPS pin so the server can attach a distance to each band
+        // and sort the list nearest-first. Without a pin we get the plain list.
+        getBands(pin ? { lat: pin.latitude, lng: pin.longitude } : {}).catch(() => []),
         getNotifications().catch(() => []),
         getReceivedGigApplications().catch(() => []),
         getGivenRatings().catch(() => []),
@@ -89,18 +99,21 @@ export default function DashboardClient() {
     }
   }, []);
 
-  // Reload every time the screen comes back into view (e.g. after posting a gig)
+  // Reload every time the screen comes back into view (e.g. after posting a gig).
+  // Once the GPS pin lands we reload once more so the band list can be sorted
+  // by distance.
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      load().finally(() => active && setLoading(false));
+      load(coords).finally(() => active && setLoading(false));
       return () => { active = false; };
-    }, [load])
+    }, [load, coords])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
+    const pin = await refreshLocation();
+    await load(pin || coords);
     setRefreshing(false);
   };
 
@@ -407,9 +420,11 @@ export default function DashboardClient() {
               </BlurView>
             </Pressable>
 
-            {/* 4 — Browse bands */}
+            {/* 4 — Browse bands (nearest first when we have your location) */}
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Browse bands</Text>
+              <Text style={styles.sectionTitle}>
+                {coords ? "Bands near you" : "Browse bands"}
+              </Text>
               <Pressable
                 onPress={() =>
                   router.push({ pathname: "/discover", params: { tab: "bands" } })
@@ -418,6 +433,9 @@ export default function DashboardClient() {
                 <Text style={styles.seeAll}>See all</Text>
               </Pressable>
             </View>
+            {nearbyNotice(locationStatus) ? (
+              <Text style={styles.nearbyNote}>{nearbyNotice(locationStatus)}</Text>
+            ) : null}
             {bands.length === 0 ? (
               <BlurView intensity={40} tint="light" style={styles.emptyCard}>
                 <Ionicons name="people-outline" size={24} color={PURPLE} />
@@ -439,6 +457,12 @@ export default function DashboardClient() {
                       <Text style={styles.bandTags} numberOfLines={1}>
                         {[b.genre, b.location].filter(Boolean).join(" · ") || "Band"}
                       </Text>
+                      {formatDistance(b.distanceKm) ? (
+                        <View style={styles.distanceChip}>
+                          <Ionicons name="navigate-outline" size={11} color={PURPLE} />
+                          <Text style={styles.distanceText}>{formatDistance(b.distanceKm)} away</Text>
+                        </View>
+                      ) : null}
                     </BlurView>
                   </Pressable>
                 ))}
@@ -638,6 +662,15 @@ const styles = StyleSheet.create({
   bandAvatarImage: { width: "100%", height: "100%" },
   bandName: { color: "#111827", fontSize: 13, fontWeight: "700" },
   bandTags: { color: "#9ca3af", fontSize: 11, marginTop: 2 },
+
+  /* Nearby (GPS) */
+  nearbyNote: { color: "#6b7280", fontSize: 11.5, fontStyle: "italic", marginBottom: 10 },
+  distanceChip: {
+    flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
+    marginTop: 6, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2,
+    backgroundColor: "rgba(124,58,237,0.12)",
+  },
+  distanceText: { color: "#7c3aed", fontSize: 10.5, fontWeight: "600" },
 
   /* 5 — Recent activity */
   activityRow: {
