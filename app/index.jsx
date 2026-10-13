@@ -125,6 +125,15 @@ export default function GigMatchLogin() {
                 </View>
               </View>
 
+              {/* Reset a forgotten password — same email code flow as sign-in */}
+              <Pressable
+                onPress={() => router.push("/forgot-password")}
+                hitSlop={8}
+                style={styles.forgotRow}
+              >
+                <Text style={styles.forgotLink}>Forgot password?</Text>
+              </Pressable>
+
               <Pressable onPress={handleLogin} disabled={submitting} style={({ pressed }) => [pressed && styles.pressed]}>
                 <LinearGradient
                   colors={["#8b5cf6", "#d946ef"]}
@@ -335,6 +344,18 @@ const styles = StyleSheet.create({
     marginTop: 8, 
     textAlign: "center" ,
   },
+
+  forgotRow: {
+    alignItems: "flex-end",
+    marginTop: 4,
+    marginBottom: -4,
+  },
+  forgotLink: {
+    color: "#d8b4fe",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+
   pressed: {
     opacity: 0.85,
   },

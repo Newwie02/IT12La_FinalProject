@@ -202,36 +202,46 @@ export default function Discover() {
     );
   };
 
-  const renderGig = (gig) => (
-    <Pressable
-      key={gig.id}
-      style={styles.card}
-      onPress={() =>
-        router.push({
-          pathname: "/gig-detail",
-          params: {
-            id: String(gig.id),
-            posterName: gig.title,
-            location: gig.location,
-            price: gig.pay,
-            description: gig.description,
-            tags: gig.date,
-            ...navParams,
-          },
-        })
-      }
-    >
-      <View style={styles.avatar}>
-        <Ionicons name="megaphone-outline" size={22} color={PURPLE} />
-      </View>
-      <View style={styles.info}>
-        <Text style={styles.name}>{gig.title}</Text>
-        {gig.pay ? <Text style={styles.meta}>{gig.pay}</Text> : null}
-        {gig.location ? <Text style={styles.metaSecondary}>{gig.location}</Text> : null}
-        {gig.description ? <Text style={styles.bio} numberOfLines={2}>{gig.description}</Text> : null}
-      </View>
-    </Pressable>
-  );
+  // Band POV: a client's gig post. The card leads with the CLIENT's photo —
+  // the person you'd actually be playing for — and only falls back to the
+  // megaphone icon for accounts that haven't uploaded one yet.
+  const renderGig = (gig) => {
+    const posterPhoto = resolveUrl(gig.postedBy?.photoUrl);
+    return (
+      <Pressable
+        key={gig.id}
+        style={styles.card}
+        onPress={() =>
+          router.push({
+            pathname: "/gig-detail",
+            params: {
+              id: String(gig.id),
+              posterName: gig.title,
+              location: gig.location,
+              price: gig.pay,
+              description: gig.description,
+              tags: gig.date,
+              ...navParams,
+            },
+          })
+        }
+      >
+        <View style={styles.avatar}>
+          {posterPhoto ? (
+            <Image source={{ uri: posterPhoto }} style={styles.avatarImage} />
+          ) : (
+            <Ionicons name="megaphone-outline" size={22} color={PURPLE} />
+          )}
+        </View>
+        <View style={styles.info}>
+          <Text style={styles.name}>{gig.title}</Text>
+          {gig.pay ? <Text style={styles.meta}>{gig.pay}</Text> : null}
+          {gig.location ? <Text style={styles.metaSecondary}>{gig.location}</Text> : null}
+          {gig.description ? <Text style={styles.bio} numberOfLines={2}>{gig.description}</Text> : null}
+        </View>
+      </Pressable>
+    );
+  };
 
   const renderMusician = (m) => {
     const photo = resolveUrl(m.photoUrl);

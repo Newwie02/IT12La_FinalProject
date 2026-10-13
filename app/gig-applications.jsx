@@ -18,6 +18,40 @@ import {
 
 const PURPLE = "#7c3aed";
 
+// --- when the Rate button unlocks -----------------------------------------
+// The performance has to be over before it appears. `gig.endTime` is the real
+// finish; gigs posted before that column existed fall back to the start time,
+// and a gig with no date at all has nothing to wait for, so it's ratable
+// straight away.
+// (The server enforces the same rule in POST /api/ratings — this is only the
+// half the user can see.)
+function gigEndsAt(app) {
+  const stamps = [app?.gig?.date, app?.gig?.endTime]
+    .filter(Boolean)
+    .map((v) => new Date(v).getTime())
+    .filter((t) => !isNaN(t));
+  // The later of the two: the start and the finish both have to be behind us,
+  // matching the server's check in POST /api/ratings.
+  return stamps.length ? Math.max(...stamps) : null;
+}
+
+function gigIsOver(app) {
+  const endsAt = gigEndsAt(app);
+  return endsAt === null || endsAt <= Date.now();
+}
+
+// "Oct 12, 2026 at 9:00 PM" — same wording the server uses in its refusal.
+function formatWhen(ms) {
+  const d = new Date(ms);
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let h = d.getHours();
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} at ${h}:${String(
+    d.getMinutes()
+  ).padStart(2, "0")} ${ampm}`;
+}
+
 export default function GigApplications() {
   const router = useRouter();
   const [apps, setApps] = useState([]);
@@ -79,9 +113,18 @@ export default function GigApplications() {
   const accepted = apps.filter((a) => a.status === "accepted").length;
   const declined = apps.filter((a) => a.status === "rejected").length;
 
-  // Opens the star picker for one accepted performer
-  const openRating = (appId) => {
-    setRatingFor(appId);
+  // Opens the star picker for one accepted performer — but only once the gig
+  // has actually finished. Guarding here as well as in the render means a list
+  // fetched before the end time passed can't open the picker either.
+  const openRating = (app) => {
+    if (!gigIsOver(app)) {
+      Alert.alert(
+        "This gig hasn't finished yet",
+        `You'll be able to rate this performance after ${formatWhen(gigEndsAt(app))}.`
+      );
+      return;
+    }
+    setRatingFor(app.id);
     setRatingStars(0);
     setRatingComment("");
   };
@@ -328,13 +371,24 @@ export default function GigApplications() {
                                 <Text style={styles.messageActionText}>Message</Text>
                               </Pressable>
                               {!given[a.id] ? (
-                                <Pressable
-                                  onPress={() => openRating(a.id)}
-                                  style={[styles.actionButton, styles.rateButton]}
-                                >
-                                  <Ionicons name="star-outline" size={14} color="#b45309" />
-                                  <Text style={styles.rateButtonText}>Rate performance</Text>
-                                </Pressable>
+                                gigIsOver(a) ? (
+                                  <Pressable
+                                    onPress={() => openRating(a)}
+                                    style={[styles.actionButton, styles.rateButton]}
+                                  >
+                                    <Ionicons name="star-outline" size={14} color="#b45309" />
+                                    <Text style={styles.rateButtonText}>Rate performance</Text>
+                                  </Pressable>
+                                ) : (
+                                  // Not finished yet — say when, instead of
+                                  // offering a button that would refuse.
+                                  <View style={styles.rateWaiting}>
+                                    <Ionicons name="time-outline" size={13} color="#9ca3af" />
+                                    <Text style={styles.rateWaitingText} numberOfLines={2}>
+                                      Opens {formatWhen(gigEndsAt(a))}
+                                    </Text>
+                                  </View>
+                                )
                               ) : null}
                             </View>
 
@@ -474,6 +528,13 @@ const styles = StyleSheet.create({
   // Rating widget (accepted performances)
   rateButton: { backgroundColor: "rgba(245,158,11,0.14)" },
   rateButtonText: { color: "#b45309", fontSize: 13, fontWeight: "700" },
+  // Shown instead of the button while the gig is still running
+  rateWaiting: {
+    flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: "center",
+    flexDirection: "row", justifyContent: "center", gap: 6,
+    backgroundColor: "rgba(156,163,175,0.12)",
+  },
+  rateWaitingText: { color: "#6b7280", fontSize: 12, fontWeight: "600", flexShrink: 1 },
   // Direct message to the accepted performer
   messageActionButton: { backgroundColor: "rgba(124,58,237,0.1)" },
   messageActionText: { color: PURPLE, fontSize: 13, fontWeight: "700" },

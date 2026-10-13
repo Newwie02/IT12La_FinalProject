@@ -515,13 +515,13 @@ const webDateInputStyle = {
   width: "100%",
   boxSizing: "border-box",
   borderWidth: 1,
-  borderColor: "#d1d5db",
-  backgroundColor: "#fff",
+  borderColor: "rgba(255,255,255,0.15)",
+  backgroundColor: "rgba(255,255,255,0.05)",
   borderRadius: 12,
-  padding: 14,
+  padding: 12,
   fontSize: 14,
-  color: "#111827",
-  colorScheme: "light", // keep the browser's calendar popup light even in dark OS mode
+  color: "#fff",
+  colorScheme: "dark", // calendar popup matches the dark card instead of flashing white
 };
 
 const styles = StyleSheet.create({
@@ -633,20 +633,20 @@ const styles = StyleSheet.create({
   dropdownValue: { color: "#fff", fontSize: 14 },
   dropdownPlaceholder: { color: "rgba(255,255,255,0.45)", fontSize: 14 },
 
-  // Birthday stands out as a light field on the dark card
+  // Birthday matches the other inputs on the dark card rather than standing out
   birthdayField: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#fff",
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
-  birthdayValue: { color: "#111827", fontSize: 14 },
-  birthdayPlaceholder: { color: "#6b7280", fontSize: 14 },
+  birthdayValue: { color: "#fff", fontSize: 14 },
+  birthdayPlaceholder: { color: "rgba(255,255,255,0.45)", fontSize: 14 },
   chevron: { color: "rgba(255,255,255,0.6)", fontSize: 16 },
 
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

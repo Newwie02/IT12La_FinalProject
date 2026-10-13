@@ -269,6 +269,21 @@ export default function GigPosting() {
         gigDate.setHours(startTime.getHours(), startTime.getMinutes(), 0, 0);
       }
 
+      // The END time has to be a real column, not just the "9:00 – 11:00"
+      // line written into the description, because the client's Rate button
+      // waits on it. Same date, with the chosen end time applied.
+      let gigEndDate = null;
+      if (eventDate && endTime) {
+        gigEndDate = new Date(eventDate);
+        gigEndDate.setHours(endTime.getHours(), endTime.getMinutes(), 0, 0);
+        // A set that runs past midnight (10:00 PM – 1:00 AM) would otherwise
+        // land BEFORE the start, opening the Rate button immediately. Roll it
+        // forward a day whenever it doesn't come after the start.
+        if (gigDate && gigEndDate.getTime() <= gigDate.getTime()) {
+          gigEndDate = new Date(gigEndDate.getTime() + 24 * 60 * 60 * 1000);
+        }
+      }
+
       let gigDescription;
       if (isClient) {
         const clientLines = [
@@ -305,6 +320,7 @@ export default function GigPosting() {
         description: gigDescription,
         location: isClient ? venue.trim() : barangay,
         date: gigDate ? gigDate.toISOString() : null,
+        endTime: gigEndDate ? gigEndDate.toISOString() : null,
         pay: startingFee, // raw digits, e.g. "5000"
       });
 

@@ -18,8 +18,6 @@ import { sendOtp, verifyOtp, saveToken } from "../api";
 // GigMatch — Google-style email verification ("OTP") sign-in.
 // Step 1: enter the email on your GigMatch account → we send a 6-digit code.
 // Step 2: enter the code → you're signed in (no password needed).
-// If the server has no SMTP configured it runs in demo mode and returns the
-// code, which we show on screen so the flow is still testable.
 
 export default function OtpLogin() {
   const router = useRouter();
@@ -27,7 +25,6 @@ export default function OtpLogin() {
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState("");
   const [code, setCode] = useState("");
-  const [devCode, setDevCode] = useState(null); // demo mode only
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
@@ -52,8 +49,7 @@ export default function OtpLogin() {
     try {
       const data = await sendOtp(value);
       setSentTo(value);
-      setDevCode(data.devCode ?? null);
-      setCode(data.devCode ?? ""); // demo mode: prefill so it's one tap
+      setCode(""); // always start empty — the code comes by email
       setInfo(isResend ? "A new code was sent." : data.message);
       setCooldown(60);
       setStep("code");
@@ -93,7 +89,6 @@ export default function OtpLogin() {
   const handleChangeEmail = () => {
     setStep("email");
     setCode("");
-    setDevCode(null);
     setInfo(null);
     setError(null);
   };
@@ -195,17 +190,6 @@ export default function OtpLogin() {
                   <Text style={styles.subheading}>
                     Enter the 6-digit code we sent to {sentTo}.
                   </Text>
-
-                  {devCode ? (
-                    <View style={styles.demoBox}>
-                      <Text style={styles.demoTitle}>Demo mode</Text>
-                      <Text style={styles.demoText}>
-                        No email service is configured on the server, so here&apos;s your
-                        code: <Text style={styles.demoCode}>{devCode}</Text> (it&apos;s also
-                        filled in for you).
-                      </Text>
-                    </View>
-                  ) : null}
 
                   <View style={styles.field}>
                     <Text style={styles.label}>6-digit code</Text>
@@ -372,32 +356,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 24,
-  },
-
-  demoBox: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.35)",
-    backgroundColor: "rgba(250, 204, 21, 0.10)",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  demoTitle: {
-    color: "#fde68a",
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  demoText: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  demoCode: {
-    color: "#fde68a",
-    fontWeight: "700",
-    letterSpacing: 2,
   },
 
   field: {

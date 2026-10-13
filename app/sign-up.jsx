@@ -83,7 +83,9 @@ export default function GigMatchSignUp() {
       // Step 1 only REQUESTS the verification code (and checks that the
       // email / phone aren't already taken). The account is created in
       // step 2, once the code you type matches the one we emailed.
-      const data = await sendSignupOtp({
+      // Step 1 requested the code — it was emailed, so there's nothing to
+      // pass through here beyond the sign-up details themselves.
+      await sendSignupOtp({
         email: email.trim(),
         phone: phone.trim(),
       });
@@ -95,8 +97,6 @@ export default function GigMatchSignUp() {
           email: email.trim(),
           phone: phone.trim(),
           password,
-          // Demo mode only (empty when the code was really emailed).
-          devCode: data.devCode ?? "",
         },
       });
     } catch (err) {

@@ -266,6 +266,18 @@ export function verifyOtp({ email, code }) {
   return request("/auth/otp/verify", { method: "POST", body: { email, code } });
 }
 
+// Forgot password. Step 1 emails a code, step 2 trades it for a new password
+// (and a token, so the user lands signed in). Both answer identically whether
+// or not the address has an account — don't add a "no account found" branch
+// here, that's the leak the server is deliberately avoiding.
+export function forgotPassword(email) {
+  return request("/auth/password/forgot", { method: "POST", body: { email } });
+}
+
+export function resetPassword({ email, code, password }) {
+  return request("/auth/password/reset", { method: "POST", body: { email, code, password } });
+}
+
 export function updateMyRole(role) {
   return request("/users/me/role", { method: "PATCH", auth: true, body: { role } });
 }

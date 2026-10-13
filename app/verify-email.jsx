@@ -21,18 +21,14 @@ import { sendSignupOtp, verifySignupOtp, saveToken } from "../api";
 // The server creates the account only when the code typed here matches the
 // exact code that was emailed — on success we get the token and move on to
 // step 3 (role-select), then step 4 (profile setup), exactly as before.
-//
-// Demo mode (no SMTP configured): the code comes back from the server and
-// is shown in a hint box, pre-filled, so the flow is testable without email.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function VerifyEmailStep() {
   const router = useRouter();
-  const { fullName, email, phone, password, devCode } = useLocalSearchParams();
+  const { fullName, email, phone, password } = useLocalSearchParams();
 
   const [code, setCode] = useState("");
-  const [demoCode, setDemoCode] = useState(devCode || "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
@@ -50,9 +46,8 @@ export default function VerifyEmailStep() {
     setInfo(null);
     setSubmitting(true);
     try {
-      const data = await sendSignupOtp({ email, phone });
-      setDemoCode(data.devCode ?? "");
-      setCode(data.devCode ?? ""); // demo mode: prefill so it's one tap
+      await sendSignupOtp({ email, phone });
+      setCode(""); // always start empty — the code comes by email
       setInfo("A new code was sent.");
       setCooldown(60);
     } catch (err) {
@@ -174,17 +169,6 @@ export default function VerifyEmailStep() {
                 We sent a 6-digit code to {String(email)}. Enter it below to create
                 your account.
               </Text>
-
-              {demoCode ? (
-                <View style={styles.demoBox}>
-                  <Text style={styles.demoTitle}>Demo mode</Text>
-                  <Text style={styles.demoText}>
-                    No email service is configured on the server, so here&apos;s your
-                    code: <Text style={styles.demoCode}>{demoCode}</Text> (it&apos;s also
-                    filled in for you).
-                  </Text>
-                </View>
-              ) : null}
 
               <View style={styles.field}>
                 <Text style={styles.label}>6-digit code</Text>
@@ -317,19 +301,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 24,
   },
-
-  demoBox: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(250, 204, 21, 0.35)",
-    backgroundColor: "rgba(250, 204, 21, 0.10)",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  demoTitle: { color: "#fde68a", fontSize: 12, fontWeight: "700", marginBottom: 4 },
-  demoText: { color: "rgba(255,255,255,0.85)", fontSize: 13, lineHeight: 18 },
-  demoCode: { color: "#fde68a", fontWeight: "700", letterSpacing: 2 },
 
   field: { marginBottom: 16 },
   label: {
